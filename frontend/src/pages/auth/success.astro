@@ -1,0 +1,171 @@
+---
+import Layout from '../../layouts/Layout.astro';
+---
+
+<Layout title="Autenticación Exitosa - Twitter Archiver">
+  <div class="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+    <div class="max-w-md w-full space-y-8">
+      <div class="text-center">
+        <!-- Loading State -->
+        <div id="loadingState" class="space-y-4">
+          <div class="mx-auto h-16 w-16 bg-twitter-600 rounded-full flex items-center justify-center">
+            <svg class="animate-spin h-8 w-8 text-white" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+          </div>
+          <h2 class="text-2xl font-bold text-gray-900">Completando autenticación...</h2>
+          <p class="text-gray-600">Estamos procesando tu información de Twitter.</p>
+        </div>
+
+        <!-- Success State -->
+        <div id="successState" class="space-y-4" style="display: none;">
+          <div class="mx-auto h-16 w-16 bg-green-600 rounded-full flex items-center justify-center">
+            <svg class="h-8 w-8 text-white" fill="currentColor" viewBox="0 0 20 20">
+              <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+            </svg>
+          </div>
+          <h2 class="text-2xl font-bold text-gray-900">¡Autenticación exitosa!</h2>
+          <p class="text-gray-600">Tu cuenta de Twitter ha sido conectada correctamente.</p>
+          <div class="mt-6">
+            <a href="/" class="btn-primary w-full">
+              Ir al Dashboard
+            </a>
+          </div>
+        </div>
+
+        <!-- Error State -->
+        <div id="errorState" class="space-y-4" style="display: none;">
+          <div class="mx-auto h-16 w-16 bg-red-600 rounded-full flex items-center justify-center">
+            <svg class="h-8 w-8 text-white" fill="currentColor" viewBox="0 0 20 20">
+              <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+            </svg>
+          </div>
+          <h2 class="text-2xl font-bold text-gray-900">Error de autenticación</h2>
+          <p id="errorMessage" class="text-gray-600">Hubo un problema al conectar tu cuenta de Twitter.</p>
+          <div class="mt-6 space-y-3">
+            <button onclick="retryAuth()" class="btn-primary w-full">
+              Intentar de nuevo
+            </button>
+            <a href="/" class="btn-secondary w-full">
+              Volver al inicio
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</Layout>
+
+<script>
+  // API base URL
+  const API_BASE = 'http://127.0.0.1:3001/';
+  
+  // Obtener parámetros de la URL
+  function getUrlParams() {
+    const urlParams = new URLSearchParams(window.location.search);
+    return {
+      code: urlParams.get('code'),
+      state: urlParams.get('state'),
+      error: urlParams.get('error'),
+      error_description: urlParams.get('error_description')
+    };
+  }
+  
+  // Procesar autenticación exitosa
+  async function processSuccessfulAuth(code, state) {
+    try {
+      const response = await fetch(`${API_BASE}/auth/callback`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          code,
+          state
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        
+        // Guardar token en localStorage
+        if (data.token) {
+          localStorage.setItem('authToken', data.token);
+        }
+        
+        // Guardar información del usuario si está disponible
+        if (data.user) {
+          localStorage.setItem('userInfo', JSON.stringify(data.user));
+        }
+        
+        // Mostrar estado de éxito
+        showSuccessState();
+        
+        // Redirigir al dashboard después de 2 segundos
+        setTimeout(() => {
+          window.location.href = '/';
+        }, 2000);
+        
+      } else {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Error en la autenticación');
+      }
+      
+    } catch (error) {
+      console.error('Error procesando autenticación:', error);
+      showErrorState(error.message);
+    }
+  }
+  
+  // Procesar error de autenticación
+  function processAuthError(error, errorDescription) {
+    let message = 'Error desconocido en la autenticación';
+    
+    if (error === 'access_denied') {
+      message = 'Acceso denegado. No se pudo conectar con tu cuenta de Twitter.';
+    } else if (error === 'invalid_request') {
+      message = 'Solicitud inválida. Por favor, intenta de nuevo.';
+    } else if (errorDescription) {
+      message = errorDescription;
+    }
+    
+    showErrorState(message);
+  }
+  
+  // Mostrar estado de éxito
+  function showSuccessState() {
+    document.getElementById('loadingState').style.display = 'none';
+    document.getElementById('errorState').style.display = 'none';
+    document.getElementById('successState').style.display = 'block';
+  }
+  
+  // Mostrar estado de error
+  function showErrorState(message) {
+    document.getElementById('loadingState').style.display = 'none';
+    document.getElementById('successState').style.display = 'none';
+    document.getElementById('errorState').style.display = 'block';
+    document.getElementById('errorMessage').textContent = message;
+  }
+  
+  // Reintentar autenticación
+  function retryAuth() {
+    window.location.href = '/';
+  }
+  
+  // Inicializar página
+  document.addEventListener('DOMContentLoaded', () => {
+    const params = getUrlParams();
+    
+    if (params.error) {
+      // Error de autenticación
+      processAuthError(params.error, params.error_description);
+    } else if (params.code) {
+      // Autenticación exitosa
+      processSuccessfulAuth(params.code, params.state);
+    } else {
+      // No hay parámetros válidos
+      showErrorState('Parámetros de autenticación inválidos');
+    }
+  });
+</script>

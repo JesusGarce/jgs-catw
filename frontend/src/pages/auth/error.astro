@@ -1,0 +1,87 @@
+---
+import Layout from '../../layouts/Layout.astro';
+---
+
+<Layout title="Error de Autenticación - Twitter Archiver">
+  <div class="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+    <div class="max-w-md w-full space-y-8">
+      <div class="text-center">
+        <div class="mx-auto h-16 w-16 bg-red-600 rounded-full flex items-center justify-center">
+          <svg class="h-8 w-8 text-white" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+          </svg>
+        </div>
+        
+        <h2 class="text-2xl font-bold text-gray-900 mt-6">Error de Autenticación</h2>
+        <p id="errorMessage" class="text-gray-600 mt-2">Hubo un problema al conectar con Twitter.</p>
+        
+        <div class="mt-8 space-y-4">
+          <button onclick="retryAuth()" class="btn-primary w-full">
+            Intentar de nuevo
+          </button>
+          <a href="/" class="btn-secondary w-full">
+            Volver al inicio
+          </a>
+        </div>
+        
+        <div class="mt-8 text-sm text-gray-500">
+          <p>Si el problema persiste, verifica que:</p>
+          <ul class="mt-2 space-y-1">
+            <li>• Tu cuenta de Twitter esté activa</li>
+            <li>• Tengas permisos para acceder a la aplicación</li>
+            <li>• No hayas cancelado el proceso de autorización</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</Layout>
+
+<script>
+  // Obtener parámetros de error de la URL
+  function getErrorParams() {
+    const urlParams = new URLSearchParams(window.location.search);
+    return {
+      error: urlParams.get('error'),
+      error_description: urlParams.get('error_description'),
+      error_reason: urlParams.get('error_reason')
+    };
+  }
+  
+  // Mostrar mensaje de error específico
+  function showSpecificError() {
+    const params = getErrorParams();
+    const errorMessage = document.getElementById('errorMessage');
+    
+    let message = 'Error desconocido en la autenticación';
+    
+    if (params.error === 'access_denied') {
+      message = 'Acceso denegado. No se pudo conectar con tu cuenta de Twitter.';
+    } else if (params.error === 'invalid_request') {
+      message = 'Solicitud inválida. Por favor, intenta de nuevo.';
+    } else if (params.error === 'server_error') {
+      message = 'Error del servidor. Por favor, intenta más tarde.';
+    } else if (params.error === 'temporarily_unavailable') {
+      message = 'Servicio temporalmente no disponible. Por favor, intenta más tarde.';
+    } else if (params.error_description) {
+      message = params.error_description;
+    }
+    
+    errorMessage.textContent = message;
+  }
+  
+  // Reintentar autenticación
+  function retryAuth() {
+    // Limpiar cualquier token existente
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('userInfo');
+    
+    // Redirigir al inicio para intentar de nuevo
+    window.location.href = '/';
+  }
+  
+  // Inicializar página
+  document.addEventListener('DOMContentLoaded', () => {
+    showSpecificError();
+  });
+</script>

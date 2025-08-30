@@ -1,0 +1,356 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="Tweets - Twitter Archiver">
+  <div class="px-4 sm:px-6 lg:px-8">
+    <!-- Header -->
+    <div class="mb-8">
+      <h1 class="text-3xl font-bold text-gray-900">Tweets</h1>
+      <p class="mt-2 text-gray-600">Explora y organiza todos tus tweets guardados.</p>
+    </div>
+
+    <!-- Filters and Search -->
+    <div class="card mb-6">
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <!-- Search -->
+        <div>
+          <label for="search" class="block text-sm font-medium text-gray-700 mb-1">Buscar</label>
+          <input type="text" id="search" placeholder="Buscar en tweets..." class="input">
+        </div>
+        
+        <!-- Category Filter -->
+        <div>
+          <label for="category" class="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
+          <select id="category" class="input">
+            <option value="">Todas las categorías</option>
+          </select>
+        </div>
+        
+        <!-- Sort By -->
+        <div>
+          <label for="sortBy" class="block text-sm font-medium text-gray-700 mb-1">Ordenar por</label>
+          <select id="sortBy" class="input">
+            <option value="bookmarkedAt">Fecha de guardado</option>
+            <option value="createdAtTwitter">Fecha del tweet</option>
+            <option value="likeCount">Likes</option>
+            <option value="retweetCount">Retweets</option>
+          </select>
+        </div>
+        
+        <!-- Sort Order -->
+        <div>
+          <label for="sortOrder" class="block text-sm font-medium text-gray-700 mb-1">Orden</label>
+          <select id="sortOrder" class="input">
+            <option value="desc">Descendente</option>
+            <option value="asc">Ascendente</option>
+          </select>
+        </div>
+      </div>
+      
+      <div class="mt-4 flex justify-between items-center">
+        <button id="applyFilters" class="btn-primary">
+          <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.207A1 1 0 013 6.5V4z"></path>
+          </svg>
+          Aplicar Filtros
+        </button>
+        
+        <div class="text-sm text-gray-500">
+          <span id="tweetCount">0</span> tweets encontrados
+        </div>
+      </div>
+    </div>
+
+    <!-- Tweets List -->
+    <div id="tweetsContainer" class="space-y-4">
+      <!-- Loading state -->
+      <div id="loadingState" class="text-center py-12">
+        <svg class="animate-spin mx-auto h-8 w-8 text-gray-400" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        <p class="mt-2 text-gray-500">Cargando tweets...</p>
+      </div>
+    </div>
+
+    <!-- Pagination -->
+    <div id="pagination" class="mt-8 flex items-center justify-between">
+      <div class="flex items-center space-x-2">
+        <button id="prevPage" class="btn-secondary" disabled>
+          <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+          </svg>
+          Anterior
+        </button>
+        <span class="text-sm text-gray-700">
+          Página <span id="currentPage">1</span> de <span id="totalPages">1</span>
+        </span>
+        <button id="nextPage" class="btn-secondary" disabled>
+          Siguiente
+          <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+          </svg>
+        </button>
+      </div>
+      
+      <div class="flex items-center space-x-2">
+        <label for="pageSize" class="text-sm text-gray-700">Mostrar:</label>
+        <select id="pageSize" class="input w-20">
+          <option value="10">10</option>
+          <option value="20" selected>20</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+        </select>
+      </div>
+    </div>
+  </div>
+</Layout>
+
+<script>
+  // API base URL
+  const API_BASE = 'http://127.0.0.1:3001';
+  
+  // State
+  let currentPage = 1;
+  let pageSize = 20;
+  let totalPages = 1;
+  let totalTweets = 0;
+  let categories = [];
+  
+  // Check authentication
+  async function checkAuth() {
+    const token = localStorage.getItem('authToken');
+    if (!token) {
+      window.location.href = '/';
+      return false;
+    }
+    return true;
+  }
+  
+  // Load categories
+  async function loadCategories() {
+    try {
+      const token = localStorage.getItem('authToken');
+      const response = await fetch(`${API_BASE}/categories`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        categories = data.categories || [];
+        
+        const categorySelect = document.getElementById('category');
+        categorySelect.innerHTML = '<option value="">Todas las categorías</option>';
+        
+        categories.forEach(category => {
+          const option = document.createElement('option');
+          option.value = category.name;
+          option.textContent = category.name;
+          categorySelect.appendChild(option);
+        });
+      }
+    } catch (error) {
+      console.error('Error loading categories:', error);
+    }
+  }
+  
+  // Load tweets
+  async function loadTweets() {
+    const token = localStorage.getItem('authToken');
+    if (!token) return;
+    
+    const search = document.getElementById('search').value;
+    const category = document.getElementById('category').value;
+    const sortBy = document.getElementById('sortBy').value;
+    const sortOrder = document.getElementById('sortOrder').value;
+    
+    // Show loading
+    document.getElementById('loadingState').style.display = 'block';
+    document.getElementById('tweetsContainer').innerHTML = '';
+    
+    try {
+      const params = new URLSearchParams({
+        page: currentPage.toString(),
+        limit: pageSize.toString(),
+        sortBy,
+        sortOrder
+      });
+      
+      if (search) params.append('search', search);
+      if (category) params.append('category', category);
+      
+      const response = await fetch(`${API_BASE}/tweets?${params}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        displayTweets(data.tweets);
+        updatePagination(data.pagination);
+      } else {
+        throw new Error('Error loading tweets');
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      document.getElementById('tweetsContainer').innerHTML = `
+        <div class="text-center py-12">
+          <svg class="mx-auto h-12 w-12 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+          </svg>
+          <p class="mt-2 text-gray-500">Error cargando tweets</p>
+        </div>
+      `;
+    } finally {
+      document.getElementById('loadingState').style.display = 'none';
+    }
+  }
+  
+  // Display tweets
+  function displayTweets(tweets) {
+    const container = document.getElementById('tweetsContainer');
+    
+    if (!tweets || tweets.length === 0) {
+      container.innerHTML = `
+        <div class="text-center py-12">
+          <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
+          </svg>
+          <p class="mt-2 text-gray-500">No se encontraron tweets</p>
+        </div>
+      `;
+      return;
+    }
+    
+    container.innerHTML = tweets.map(tweet => `
+      <div class="card hover:shadow-md transition-shadow">
+        <div class="flex items-start space-x-4">
+          <div class="flex-shrink-0">
+            <div class="w-12 h-12 bg-twitter-600 rounded-full flex items-center justify-center">
+              <span class="text-white font-medium">${tweet.authorUsername.charAt(0).toUpperCase()}</span>
+            </div>
+          </div>
+          
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center justify-between mb-2">
+              <div class="flex items-center space-x-2">
+                <span class="text-sm font-medium text-gray-900">@${tweet.authorUsername}</span>
+                <span class="text-sm text-gray-500">${new Date(tweet.createdAtTwitter).toLocaleDateString()}</span>
+                ${tweet.category ? `<span class="badge badge-primary">${tweet.category}</span>` : '<span class="badge badge-warning">Sin categoría</span>'}
+              </div>
+              
+              <div class="flex items-center space-x-2">
+                <button onclick="changeCategory('${tweet.id}')" class="text-sm text-primary-600 hover:text-primary-800">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path>
+                  </svg>
+                </button>
+                <a href="https://twitter.com/${tweet.authorUsername}/status/${tweet.tweetId}" target="_blank" class="text-sm text-gray-500 hover:text-gray-700">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+                  </svg>
+                </a>
+              </div>
+            </div>
+            
+            <p class="text-gray-900 mb-3">${tweet.content}</p>
+            
+            <div class="flex items-center justify-between">
+              <div class="flex items-center space-x-4 text-sm text-gray-500">
+                <span>❤️ ${tweet.likeCount}</span>
+                <span>🔄 ${tweet.retweetCount}</span>
+                <span>💬 ${tweet.replyCount}</span>
+              </div>
+              
+              <div class="text-xs text-gray-400">
+                Guardado: ${new Date(tweet.bookmarkedAt).toLocaleDateString()}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `).join('');
+  }
+  
+  // Update pagination
+  function updatePagination(pagination) {
+    currentPage = pagination.currentPage;
+    totalPages = pagination.totalPages;
+    totalTweets = pagination.totalItems;
+    
+    document.getElementById('currentPage').textContent = currentPage;
+    document.getElementById('totalPages').textContent = totalPages;
+    document.getElementById('tweetCount').textContent = totalTweets;
+    
+    document.getElementById('prevPage').disabled = !pagination.hasPrev;
+    document.getElementById('nextPage').disabled = !pagination.hasNext;
+  }
+  
+  // Change category
+  async function changeCategory(tweetId) {
+    const token = localStorage.getItem('authToken');
+    if (!token) return;
+    
+    const category = prompt('Ingresa la nueva categoría:');
+    if (!category) return;
+    
+    try {
+      const response = await fetch(`${API_BASE}/tweets/${tweetId}/category`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ category })
+      });
+      
+      if (response.ok) {
+        loadTweets(); // Reload tweets
+      } else {
+        alert('Error actualizando categoría');
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      alert('Error actualizando categoría');
+    }
+  }
+  
+  // Event listeners
+  document.getElementById('applyFilters')?.addEventListener('click', () => {
+    currentPage = 1;
+    loadTweets();
+  });
+  
+  document.getElementById('prevPage')?.addEventListener('click', () => {
+    if (currentPage > 1) {
+      currentPage--;
+      loadTweets();
+    }
+  });
+  
+  document.getElementById('nextPage')?.addEventListener('click', () => {
+    if (currentPage < totalPages) {
+      currentPage++;
+      loadTweets();
+    }
+  });
+  
+  document.getElementById('pageSize')?.addEventListener('change', (e) => {
+    pageSize = parseInt(e.target.value);
+    currentPage = 1;
+    loadTweets();
+  });
+  
+  // Initialize page
+  document.addEventListener('DOMContentLoaded', async () => {
+    const isAuthenticated = await checkAuth();
+    if (isAuthenticated) {
+      await loadCategories();
+      loadTweets();
+    }
+  });
+</script>

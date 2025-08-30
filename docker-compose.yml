@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  # Base de datos MySQL
+  database:
+    image: mysql:8.0
+    container_name: twitter_archiver_db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_DATABASE: twitter_archiver
+      MYSQL_USER: twitter_user
+      MYSQL_PASSWORD: twitter_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./backend/sql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - twitter_archiver
+
+  # Backend API
+  backend:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: twitter_archiver_backend
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=mysql://twitter_user:twitter_password@database:3306/twitter_archiver
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    depends_on:
+      - database
+    networks:
+      - twitter_archiver
+
+  # Frontend Astro (desarrollo)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: twitter_archiver_frontend
+    restart: unless-stopped
+    environment:
+      - PUBLIC_API_URL=http://localhost:3001
+    ports:
+      - "4321:4321"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - twitter_archiver
+
+  # Redis para caché (opcional, para el futuro)
+  redis:
+    image: redis:7-alpine
+    container_name: twitter_archiver_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - twitter_archiver
+
+volumes:
+  mysql_data:
+
+networks:
+  twitter_archiver:
+    driver: bridge

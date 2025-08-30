@@ -24,14 +24,13 @@
 - **Build:** Vite (integrado en Astro)
 
 ### APIs y Servicios
-- **Twitter API v2:** Tier gratuito (1,500 tweets/mes)
+- **Twitter API v1.1:** Para aplicaciones standalone (limitado a timeline público)
 - **Categorización:** Transformers.js (gratuito, local)
 
 ### DevOps
 - **Contenedores:** Docker + Docker Compose
 - **Variables de entorno:** dotenv
 - **Logs:** Winston
-- **Testing:** Jest + Supertest
 
 ## 🏗️ Arquitectura del Sistema
 
@@ -60,7 +59,7 @@
 
 #### 1.1 Setup del Proyecto
 **Tareas:**
-- [ ] Inicializar repositorio Git
+- [x] Inicializar repositorio Git
 - [ ] Configurar estructura de carpetas monorepo
 - [ ] Setup Docker + Docker Compose
 - [ ] Configurar variables de entorno
@@ -164,8 +163,8 @@ CREATE TABLE categories (
 
 #### 2.2 Integración Twitter API
 **Tareas:**
-- [ ] Configurar cliente Twitter API v2
-- [ ] Implementar obtención de bookmarks
+- [ ] Configurar cliente Twitter API v1.1
+- [ ] Implementar obtención de timeline público
 - [ ] Manejar paginación y límites de rate
 - [ ] Sistema de reintentos con backoff exponencial
 
@@ -179,7 +178,7 @@ class TwitterService {
     // Procesar metadata de tweets
   }
   
-  async syncUserBookmarks(userId) {
+  async syncUserTimeline(userId, screenName) {
     // Sincronización completa de bookmarks
     // Detectar nuevos tweets
     // Actualizar base de datos

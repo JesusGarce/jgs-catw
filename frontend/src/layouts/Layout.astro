@@ -1,0 +1,187 @@
+---
+export interface Props {
+  title: string;
+  description?: string;
+}
+
+const { title, description = "Twitter Archiver - Organiza y categoriza tus tweets guardados" } = Astro.props;
+---
+
+<!DOCTYPE html>
+<html lang="es" class="h-full">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="description" content={description} />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>{title}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  </head>
+  <body class="h-full bg-gray-50">
+    <div class="min-h-full">
+      <!-- Navigation -->
+      <nav class="bg-white shadow-sm border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div class="flex justify-between h-16">
+            <div class="flex">
+              <div class="flex-shrink-0 flex items-center">
+                <a href="/" class="flex items-center space-x-2">
+                  <svg class="h-8 w-8 text-twitter-600" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M23.953 4.57a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723c-.951.555-2.005.959-3.127 1.184a4.92 4.92 0 00-8.384 4.482C7.69 8.095 4.067 6.13 1.64 3.162a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.06a4.923 4.923 0 003.946 4.827 4.996 4.996 0 01-2.212.085 4.936 4.936 0 004.604 3.417 9.867 9.867 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.053 0 13.998-7.496 13.998-13.985 0-.21 0-.42-.015-.63A9.935 9.935 0 0024 4.59z"/>
+                  </svg>
+                  <span class="text-xl font-bold text-gray-900">Twitter Archiver</span>
+                </a>
+              </div>
+              <div class="hidden sm:ml-6 sm:flex sm:space-x-8">
+                <a href="/" class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                  Dashboard
+                </a>
+                <a href="/tweets" class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                  Tweets
+                </a>
+                <a href="/categories" class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                  Categorías
+                </a>
+                <a href="/sync" class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                  Sincronizar
+                </a>
+              </div>
+            </div>
+            <div class="hidden sm:ml-6 sm:flex sm:items-center">
+              <div class="ml-3 relative">
+                <div class="flex items-center space-x-4">
+                  <!-- User Info (hidden by default) -->
+                  <div id="userInfo" class="hidden flex items-center space-x-3">
+                    <div class="flex items-center space-x-2">
+                      <div class="w-8 h-8 bg-twitter-600 rounded-full flex items-center justify-center">
+                        <span id="userInitial" class="text-white text-sm font-medium">U</span>
+                      </div>
+                      <span id="userName" class="text-sm font-medium text-gray-900">Usuario</span>
+                    </div>
+                    <button id="logoutBtn" class="text-sm text-gray-500 hover:text-gray-700">
+                      Cerrar sesión
+                    </button>
+                  </div>
+                  
+                  <!-- Login Button (shown by default) -->
+                  <button id="loginBtn" class="btn-twitter">
+                    <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M23.953 4.57a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723c-.951.555-2.005.959-3.127 1.184a4.92 4.92 0 00-8.384 4.482C7.69 8.095 4.067 6.13 1.64 3.162a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.06a4.923 4.923 0 003.946 4.827 4.996 4.996 0 01-2.212.085 4.936 4.936 0 004.604 3.417 9.867 9.867 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.053 0 13.998-7.496 13.998-13.985 0-.21 0-.42-.015-.63A9.935 9.935 0 0024 4.59z"/>
+                    </svg>
+                    Conectar con Twitter
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </nav>
+
+      <!-- Main content -->
+      <main>
+        <div class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+          <slot />
+        </div>
+      </main>
+    </div>
+
+    <script>
+      // API base URL
+      const API_BASE = 'http://127.0.0.1:3001';
+      
+      // Check authentication status
+      async function checkAuth() {
+        try {
+          const token = localStorage.getItem('authToken');
+          if (!token) {
+            showLoginState();
+            return false;
+          }
+          
+          // Verify token
+          const response = await fetch(`${API_BASE}/user/profile`, {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          });
+          
+          if (response.ok) {
+            const userData = await response.json();
+            showUserState(userData.user);
+            return true;
+          } else {
+            // Token invalid, clear it
+            localStorage.removeItem('authToken');
+            localStorage.removeItem('userInfo');
+            showLoginState();
+            return false;
+          }
+        } catch (error) {
+          console.error('Error checking auth:', error);
+          showLoginState();
+          return false;
+        }
+      }
+      
+      // Show login state
+      function showLoginState() {
+        document.getElementById('userInfo').classList.add('hidden');
+        document.getElementById('loginBtn').classList.remove('hidden');
+      }
+      
+      // Show user state
+      function showUserState(user) {
+        document.getElementById('loginBtn').classList.add('hidden');
+        document.getElementById('userInfo').classList.remove('hidden');
+        
+        // Update user info
+        if (user) {
+          const initial = user.username ? user.username.charAt(0).toUpperCase() : 'U';
+          const name = user.username ? `@${user.username}` : 'Usuario';
+          
+          document.getElementById('userInitial').textContent = initial;
+          document.getElementById('userName').textContent = name;
+        }
+      }
+      
+      // Login functionality
+      document.getElementById('loginBtn')?.addEventListener('click', async () => {
+        try {
+          const response = await fetch(`${API_BASE}/auth/login`, {
+            method: 'GET',
+            credentials: 'include'
+          });
+          
+          if (response.ok) {
+            const data = await response.json();
+            window.location.href = data.authURL;
+          } else {
+            console.error('Error iniciando login');
+            alert('Error al iniciar el proceso de autenticación');
+          }
+        } catch (error) {
+          console.error('Error:', error);
+          alert('Error de conexión');
+        }
+      });
+      
+      // Logout functionality
+      document.getElementById('logoutBtn')?.addEventListener('click', () => {
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('userInfo');
+        window.location.href = '/';
+      });
+      
+      // Initialize auth check
+      document.addEventListener('DOMContentLoaded', () => {
+        checkAuth();
+      });
+    </script>
+  </body>
+</html>
+
+<style is:global>
+  @import '../styles/global.css';
+</style>

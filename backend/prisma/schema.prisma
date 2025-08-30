@@ -1,0 +1,112 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  twitterId    String   @unique @map("twitter_id")
+  username     String
+  displayName  String?  @map("display_name")
+  accessToken  String?  @map("access_token") @db.Text
+  refreshToken String?  @map("refresh_token") @db.Text
+  lastSync     DateTime? @map("last_sync")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relaciones
+  tweets     Tweet[]
+  categories Category[]
+
+  @@map("users")
+}
+
+model Tweet {
+  id               Int      @id @default(autoincrement())
+  tweetId          String   @unique @map("tweet_id")
+  userId           Int      @map("user_id")
+  content          String   @db.Text
+  authorUsername   String   @map("author_username")
+  authorName       String   @map("author_name")
+  authorId         String   @map("author_id")
+  createdAtTwitter DateTime @map("created_at_twitter")
+  bookmarkedAt     DateTime @map("bookmarked_at")
+  category         String?  @db.VarChar(100)
+  confidenceScore  Float?   @map("confidence_score") @db.Float
+  processed        Boolean  @default(false)
+  isArchived       Boolean  @default(false) @map("is_archived")
+  
+  // Metadatos adicionales
+  retweetCount     Int?     @map("retweet_count")
+  likeCount        Int?     @map("like_count")
+  replyCount       Int?     @map("reply_count")
+  mediaUrls        String?  @map("media_urls") @db.Text // JSON array como string
+  hashtags         String?  @map("hashtags") @db.Text   // JSON array como string
+  mentions         String?  @map("mentions") @db.Text   // JSON array como string
+  
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  // Relaciones
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, category], name: "idx_user_category")
+  @@index([bookmarkedAt], name: "idx_bookmarked_at")
+  @@index([processed], name: "idx_processed")
+  @@map("tweets")
+}
+
+model Category {
+  id          Int     @id @default(autoincrement())
+  name        String  @db.VarChar(100)
+  description String? @db.Text
+  color       String? @db.VarChar(7) // Para códigos hex de colores
+  userId      Int     @map("user_id")
+  tweetCount  Int     @default(0) @map("tweet_count")
+  isDefault   Boolean @default(false) @map("is_default")
+  sortOrder   Int     @default(0) @map("sort_order")
+  
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relaciones
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, name], name: "unique_user_category")
+  @@map("categories")
+}
+
+model SyncLog {
+  id          Int      @id @default(autoincrement())
+  userId      Int      @map("user_id")
+  status      String   @db.VarChar(50) // 'success', 'error', 'running'
+  tweetsFound Int      @default(0) @map("tweets_found")
+  tweetsNew   Int      @default(0) @map("tweets_new")
+  error       String?  @db.Text
+  duration    Int?     // duración en ms
+  
+  startedAt   DateTime @default(now()) @map("started_at")
+  completedAt DateTime? @map("completed_at")
+
+  @@index([userId], name: "idx_user_sync")
+  @@index([status], name: "idx_sync_status")
+  @@map("sync_logs")
+}
+
+model PKCEState {
+  id           Int      @id @default(autoincrement())
+  state        String   @unique @db.VarChar(255)
+  codeVerifier String   @map("code_verifier") @db.Text
+  createdAt    DateTime @default(now()) @map("created_at")
+  
+  @@index([createdAt], name: "idx_pkce_created_at")
+  @@map("pkce_states")
+}
