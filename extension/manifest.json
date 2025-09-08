@@ -1,0 +1,45 @@
+{
+    "manifest_version": 3,
+    "name": "catw Scraper",
+    "version": "1.0",
+    "description": "Scrapes and sends bookmarked tweets to a backend.",
+    "permissions": [
+      "scripting",
+      "storage"
+    ],
+    "host_permissions": [
+      "https://x.com/i/bookmarks",
+      "http://127.0.0.1:3001/*",
+      "http://127.0.0.1:4321/*"
+    ],
+    "background": {
+      "service_worker": "background.js"
+    },
+    "content_scripts": [
+      {
+        "matches": [
+          "https://x.com/i/bookmarks"
+        ],
+        "js": [
+          "content.js"
+        ]
+      },
+      {
+        "matches": [
+          "http://127.0.0.1:4321/*"
+        ],
+        "js": [
+          "webapp-content.js"
+        ]
+      }
+    ],
+    "action": {
+      "default_popup": "popup.html",
+      "default_icon": {
+        "16": "./images/icon16.png",
+        "48": "./images/icon48.png",
+        "128": "./images/icon128.png"
+      }
+    }
+  }
+  

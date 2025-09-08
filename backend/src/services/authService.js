@@ -4,7 +4,7 @@ import { PrismaClient } from '@prisma/client';
 import { logger, logAuth, logError } from '../utils/logger.js';
 import { generateTokens } from '../middleware/auth.js';
 import { AppError } from '../middleware/errorHandler.js';
-import { getUserByScreenName } from './twitterService.js';
+import { getCurrentUser } from './twitterService.js';
 
 const prisma = new PrismaClient();
 
@@ -15,6 +15,17 @@ class AuthService {
     this.callbackURL = process.env.TWITTER_CALLBACK_URL;
     this.authURL = 'https://twitter.com/i/oauth2/authorize';
     this.tokenURL = 'https://api.twitter.com/2/oauth2/token';
+    
+    // Validar que las variables de entorno estén configuradas
+    if (!this.clientId) {
+      throw new Error('TWITTER_CLIENT_ID no está configurado');
+    }
+    if (!this.clientSecret) {
+      throw new Error('TWITTER_CLIENT_SECRET no está configurado');
+    }
+    if (!this.callbackURL) {
+      throw new Error('TWITTER_CALLBACK_URL no está configurado');
+    }
   }
 
   // Generar state y code_verifier para PKCE
@@ -175,35 +186,36 @@ class AuthService {
   // Crear o actualizar usuario después de autenticación exitosa
   async createOrUpdateUser(tokens) {
     try {
-      // Para API v1.1, necesitamos extraer el username del token o usar un método alternativo
-      // Por ahora, vamos a usar un enfoque simplificado donde el usuario proporciona su username
-      
-      // NOTA: En una implementación real con OAuth 1.0a, podríamos obtener esta información
-      // del token de acceso, pero para aplicaciones standalone, necesitamos un enfoque diferente
-      
-      logAuth('USER_INFO_RETRIEVED', {
-        message: 'API v1.1 requiere OAuth 1.0a para obtener información del usuario'
+      // Obtener información real del usuario de Twitter API v2
+      logAuth('FETCHING_USER_INFO', {
+        message: 'Obteniendo información del usuario desde Twitter API v2'
       });
 
-      // Por ahora, vamos a crear un usuario con información básica
-      // En una implementación real, necesitarías implementar OAuth 1.0a completo
+      const twitterUser = await getCurrentUser(tokens.accessToken);
       
+      logAuth('USER_INFO_RETRIEVED', {
+        twitterId: twitterUser.id,
+        username: twitterUser.username,
+        displayName: twitterUser.name
+      });
+
+      // Crear o actualizar usuario con información real
       const user = await prisma.user.upsert({
         where: {
-          twitterId: 'temp_' + Date.now() // Temporal hasta implementar OAuth 1.0a
+          twitterId: twitterUser.id
         },
         update: {
-          username: 'user_' + Date.now(), // Temporal
-          displayName: 'Usuario Twitter',
+          username: twitterUser.username,
+          displayName: twitterUser.name,
           accessToken: tokens.accessToken,
           refreshToken: tokens.refreshToken,
           isActive: true,
           updatedAt: new Date()
         },
         create: {
-          twitterId: 'temp_' + Date.now(),
-          username: 'user_' + Date.now(),
-          displayName: 'Usuario Twitter',
+          twitterId: twitterUser.id,
+          username: twitterUser.username,
+          displayName: twitterUser.name,
           accessToken: tokens.accessToken,
           refreshToken: tokens.refreshToken,
           isActive: true
@@ -217,7 +229,9 @@ class AuthService {
 
       logAuth('USER_UPSERT_SUCCESS', {
         userId: user.id,
+        twitterId: user.twitterId,
         username: user.username,
+        displayName: user.displayName,
         isNew: user.createdAt.getTime() === user.updatedAt.getTime()
       });
 
@@ -315,8 +329,12 @@ class AuthService {
       // Intercambiar código por tokens
       const tokens = await this.exchangeCodeForTokens(code, codeVerifier, state);
 
+      console.log('tokens', tokens);
+
       // Crear o actualizar usuario
       const user = await this.createOrUpdateUser(tokens);
+
+      console.log('user', user);
 
       // Generar JWT para la aplicación
       const { accessToken: appToken } = generateTokens(user.id);

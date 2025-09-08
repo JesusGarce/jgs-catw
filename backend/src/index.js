@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
 import rateLimit from 'express-rate-limit';
+import { PrismaClient } from '@prisma/client';
 
 // Importar configuraciones y servicios
 import { logger } from './utils/logger.js';
@@ -25,6 +26,7 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const prisma = new PrismaClient();
 
 // Configuración de rate limiting
 const limiter = rateLimit({
@@ -38,7 +40,12 @@ const limiter = rateLimit({
 // Middlewares de seguridad y logging
 app.use(helmet());
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:4321',
+  origin: [
+    'http://localhost:4321',
+    'http://127.0.0.1:4321',
+    'http://192.168.31.157:4321',
+    process.env.FRONTEND_URL
+  ].filter(Boolean),
   credentials: true
 }));
 app.use(morgan('combined', { stream: { write: (msg) => logger.info(msg.trim()) } }));
@@ -67,8 +74,8 @@ app.use('/api/v1/user', authMiddleware, userRoutes);
 // Ruta para forzar sincronización manual
 app.post('/api/v1/sync', authMiddleware, async (req, res) => {
   try {
-    const { syncUserTimeline } = await import('./services/twitterService.js');
-const result = await syncUserTimeline(req.user.id, req.user.username);
+    const { syncUserBookmarks } = await import('./services/twitterService.js');
+    const result = await syncUserBookmarks(req.user.id);
     res.json(result);
   } catch (error) {
     logger.error('Error en sincronización manual:', error);
@@ -85,6 +92,161 @@ app.get('/api/v1/stats', authMiddleware, async (req, res) => {
   } catch (error) {
     logger.error('Error obteniendo estadísticas:', error);
     res.status(500).json({ error: 'Error obteniendo estadísticas' });
+  }
+});
+
+// Ruta para historial de sincronización
+app.get('/api/v1/sync/history', authMiddleware, async (req, res) => {
+  try {
+    // Por ahora devolver un array vacío hasta implementar el historial
+    res.json({ 
+      history: [],
+      message: 'Historial de sincronización en desarrollo'
+    });
+  } catch (error) {
+    logger.error('Error obteniendo historial de sincronización:', error);
+    res.status(500).json({ error: 'Error obteniendo historial de sincronización' });
+  }
+});
+
+// Ruta para verificar estado de autenticación (para la extensión)
+app.get('/api/v1/auth/status', authMiddleware, async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: {
+        id: true,
+        twitterId: true,
+        username: true,
+        displayName: true,
+        lastSync: true,
+        isActive: true
+      }
+    });
+
+    if (!user || !user.isActive) {
+      return res.status(401).json({ 
+        authenticated: false, 
+        message: 'Usuario no encontrado o inactivo' 
+      });
+    }
+
+    res.json({
+      authenticated: true,
+      user: {
+        id: user.id,
+        twitterId: user.twitterId,
+        username: user.username,
+        displayName: user.displayName,
+        lastSync: user.lastSync
+      }
+    });
+
+  } catch (error) {
+    logger.error('Error verificando estado de autenticación:', error);
+    res.status(500).json({ 
+      authenticated: false, 
+      error: 'Error verificando autenticación' 
+    });
+  }
+});
+
+// Ruta para recibir tweets de la extensión de Chrome
+app.post('/api/v1/tweets/extension', authMiddleware, async (req, res) => {
+  try {
+    const { tweets } = req.body;
+    
+    if (!tweets || !Array.isArray(tweets)) {
+      return res.status(400).json({ error: 'Se requiere un array de tweets' });
+    }
+
+    const userId = req.user.id;
+    let processedCount = 0;
+    let newTweetsCount = 0;
+
+    // Procesar cada tweet de la extensión
+    for (const tweetData of tweets) {
+      try {
+        // Extraer información del tweet
+        const tweetUrl = tweetData.tweet_url;
+        const tweetId = tweetUrl ? tweetUrl.split('/status/')[1]?.split('?')[0] : null;
+        
+        if (!tweetId) {
+          logger.warn('Tweet sin ID válido:', tweetData);
+          continue;
+        }
+
+        // Extraer hashtags y menciones del contenido
+        const content = tweetData.tweet_content || '';
+        const hashtags = content.match(/#[\w\u00c0-\u024f\u1e00-\u1eff]+/g) || [];
+        const mentions = content.match(/@[\w\u00c0-\u024f\u1e00-\u1eff]+/g) || [];
+
+        // Verificar si el tweet ya existe
+        const existingTweet = await prisma.tweet.findUnique({
+          where: { tweetId }
+        });
+
+        if (existingTweet) {
+          // El tweet ya existe, no hacer nada
+          logger.info('Tweet ya existe, omitiendo:', tweetId);
+          continue;
+        }
+
+        // Crear nuevo tweet en la base de datos
+        const tweet = await prisma.tweet.create({
+          data: {
+            tweetId,
+            content: tweetData.tweet_content || '',
+            authorId: tweetData.user_handle || 'unknown',
+            authorUsername: tweetData.user_handle || 'unknown',
+            authorName: tweetData.user_name || 'Unknown User',
+            createdAtTwitter: new Date(), // No disponible en scraping
+            bookmarkedAt: new Date(),
+            retweetCount: 0,
+            likeCount: 0,
+            replyCount: 0,
+            mediaUrls: tweetData.media_url && tweetData.media_url !== 'N/A' ? 
+              JSON.stringify([tweetData.media_url]) : null,
+            hashtags: hashtags.length > 0 ? JSON.stringify(hashtags) : null,
+            mentions: mentions.length > 0 ? JSON.stringify(mentions) : null,
+            userId,
+            //source: 'extension' // Marcar como proveniente de la extensión
+          }
+        });
+
+        processedCount++;
+        newTweetsCount++;
+
+      } catch (error) {
+        logger.error('Error procesando tweet de extensión:', error);
+        continue;
+      }
+    }
+
+    // Actualizar última sincronización del usuario
+    await prisma.user.update({
+      where: { id: userId },
+      data: { lastSync: new Date() }
+    });
+
+    logger.info('Tweets de extensión procesados:', {
+      userId,
+      totalReceived: tweets.length,
+      processed: processedCount,
+      newTweets: newTweetsCount
+    });
+
+    res.json({
+      success: true,
+      message: 'Tweets procesados exitosamente',
+      totalReceived: tweets.length,
+      processed: processedCount,
+      newTweets: newTweetsCount
+    });
+
+  } catch (error) {
+    logger.error('Error procesando tweets de extensión:', error);
+    res.status(500).json({ error: 'Error procesando tweets de la extensión' });
   }
 });
 

@@ -95,7 +95,7 @@ import Layout from '../layouts/Layout.astro';
 
 <script>
   // API base URL
-  const API_BASE = 'http://127.0.0.1:3001/';
+  const API_BASE = 'http://192.168.31.157:3001';
   
   // Check authentication
   async function checkAuth() {
@@ -113,7 +113,7 @@ import Layout from '../layouts/Layout.astro';
     if (!token) return;
     
     try {
-      const response = await fetch(`${API_BASE}/stats`, {
+      const response = await fetch(`${API_BASE}/api/v1/stats`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -159,7 +159,7 @@ import Layout from '../layouts/Layout.astro';
     if (!token) return;
     
     try {
-      const response = await fetch(`${API_BASE}/sync/history`, {
+      const response = await fetch(`${API_BASE}/api/v1/sync/history`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -250,7 +250,7 @@ import Layout from '../layouts/Layout.astro';
       progressPercent.textContent = '10%';
       
       // Start sync
-      const response = await fetch(`${API_BASE}/sync`, {
+      const response = await fetch(`${API_BASE}/api/v1/sync`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`

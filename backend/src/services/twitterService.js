@@ -7,28 +7,27 @@ const prisma = new PrismaClient();
 
 class TwitterService {
   constructor() {
-    // Cambiar a API v1.1 para aplicaciones standalone
-    this.baseURL = 'https://api.twitter.com/1.1';
+    this.baseURL = 'https://api.twitter.com/2';
     this.maxRetries = 3;
     this.retryDelay = 1000; // 1 segundo
+    this.rateLimitDelay = 10000; // 10 segundos entre requests para evitar rate limits
     this.apiKey = process.env.TWITTER_API_KEY;
     this.apiSecret = process.env.TWITTER_API_SECRET;
     this.bearerToken = process.env.TWITTER_BEARER_TOKEN;
   }
 
-  // Crear cliente HTTP con interceptores para API v1.1
+  // Crear cliente HTTP con interceptores
   createHTTPClient(accessToken = null, useAppAuth = false) {
     let authHeader;
     
     if (accessToken) {
-      // User authentication - OAuth 1.0a para v1.1
-      // Para v1.1 necesitamos OAuth 1.0a, no Bearer token
-      throw new TwitterAPIError('API v1.1 requiere OAuth 1.0a para autenticación de usuario', 401);
+      // User authentication - OAuth 2.0 Bearer Token del usuario
+      authHeader = `Bearer ${accessToken}`;
     } else if (useAppAuth && this.bearerToken) {
-      // App-only authentication con Bearer Token (solo para algunos endpoints)
+      // App-only authentication con Bearer Token
       authHeader = `Bearer ${this.bearerToken}`;
     } else if (useAppAuth && this.apiKey && this.apiSecret) {
-      // App-only authentication with API Key + Secret
+      // App-only authentication with API Key + Secret (menos común)
       const credentials = Buffer.from(`${this.apiKey}:${this.apiSecret}`).toString('base64');
       authHeader = `Basic ${credentials}`;
     } else {
@@ -81,7 +80,7 @@ class TwitterService {
         const twitterError = this.handleTwitterError(error);
         logTwitterAPI('RESPONSE_ERROR', {
           status: error.response?.status,
-          message: error.response?.data?.errors?.[0]?.message || error.message,
+          message: error.response?.data?.detail || error.message,
           url: error.config?.url
         });
         return Promise.reject(twitterError);
@@ -91,7 +90,7 @@ class TwitterService {
     return client;
   }
 
-  // Manejo específico de errores de Twitter API v1.1
+  // Manejo específico de errores de Twitter API
   handleTwitterError(error) {
     if (!error.response) {
       return new TwitterAPIError('Error de conexión con Twitter API', 503);
@@ -103,10 +102,6 @@ class TwitterService {
       remaining: error.response.headers['x-rate-limit-remaining'],
       reset: error.response.headers['x-rate-limit-reset']
     };
-
-    // En v1.1, los errores vienen en data.errors array
-    const errorMessage = data?.errors?.[0]?.message || 'Error desconocido de Twitter API';
-    const errorCode = data?.errors?.[0]?.code;
 
     switch (status) {
       case 401:
@@ -121,79 +116,159 @@ class TwitterService {
         return new TwitterAPIError('Error interno de Twitter', status, 'TWITTER_SERVER_ERROR');
       default:
         return new TwitterAPIError(
-          errorMessage,
+          data?.detail || 'Error desconocido de Twitter API',
           status,
-          errorCode
+          data?.type
         );
     }
   }
 
-  // Obtener favoritos del usuario (equivalente a bookmarks en v1.1)
-  async getFavorites(accessToken, userId, maxId = null, count = 100) {
-    if (!accessToken) {
-      throw new TwitterAPIError('Se requiere token de acceso del usuario para obtener favoritos', 401);
+  // Método para manejar rate limits con retry automático
+  async handleRateLimitWithRetry(apiCall, maxRetries = 5) {
+    let lastError;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        return await apiCall();
+      } catch (error) {
+        lastError = error;
+        
+        if (error.status === 429) {
+          // Rate limit excedido
+          const resetTime = error.rateLimit?.reset;
+          let waitTime;
+          
+          if (resetTime) {
+            // Calcular tiempo de espera hasta el reset
+            const resetTimestamp = parseInt(resetTime) * 1000; // Convertir a milisegundos
+            const now = Date.now();
+            waitTime = Math.max(60000, resetTimestamp - now + 5000); // +5 segundos de margen
+            
+            logTwitterAPI('RATE_LIMIT_RETRY', {
+              attempt,
+              maxRetries,
+              waitTime: `${waitTime}ms`,
+              resetTime: new Date(resetTimestamp).toISOString(),
+              currentTime: new Date(now).toISOString(),
+              remaining: error.rateLimit?.remaining || 'unknown',
+              limit: error.rateLimit?.limit || 'unknown'
+            });
+          } else {
+            // Si no hay reset time, usar backoff exponencial
+            waitTime = Math.min(300000, 10000 * Math.pow(2, attempt - 1)); // Máximo 5 minutos
+            
+            logTwitterAPI('RATE_LIMIT_RETRY', {
+              attempt,
+              maxRetries,
+              waitTime: `${waitTime}ms`,
+              resetTime: 'unknown',
+              strategy: 'exponential_backoff'
+            });
+          }
+          
+          if (attempt < maxRetries) {
+            logTwitterAPI('RATE_LIMIT_WAITING', {
+              message: `Esperando ${Math.round(waitTime / 1000)} segundos antes del reintento ${attempt + 1}/${maxRetries}`
+            });
+            
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+            continue;
+          }
+        }
+        
+        // Si no es rate limit o se agotaron los reintentos, lanzar error
+        throw error;
+      }
     }
-
-    // Para v1.1 necesitamos OAuth 1.0a, no Bearer token
-    // Esto requiere una implementación más compleja con OAuth 1.0a
-    throw new TwitterAPIError('API v1.1 requiere implementación de OAuth 1.0a para favoritos', 501);
+    
+    throw lastError;
   }
 
-  // Obtener timeline del usuario (alternativa a bookmarks)
-  async getUserTimeline(userId, screenName = null, maxId = null, count = 100) {
+  // Obtener bookmarks del usuario
+  async getBookmarks(accessToken, userId, paginationToken = null, maxResults = 100) {
+    if (!accessToken) {
+      throw new TwitterAPIError('Se requiere token de acceso del usuario para obtener bookmarks', 401);
+    }
+
+    const client = this.createHTTPClient(accessToken);
+
+    const params = {
+      max_results: Math.min(maxResults, 25), // Reducir aún más el tamaño de lote
+      'tweet.fields': 'id,text,author_id,created_at,public_metrics,context_annotations',
+      'user.fields': 'id,name,username',
+      expansions: 'author_id,attachments.media_keys',
+      'media.fields': 'type,url,preview_image_url'
+    };
+
+    if (paginationToken) {
+      params.pagination_token = paginationToken;
+    }
+
     try {
-      const client = this.createHTTPClient(null, true); // Usar app auth
+      // Usar el manejo de rate limits con retry
+      const response = await this.handleRateLimitWithRetry(async () => {
+        logTwitterAPI('BOOKMARKS_REQUEST', {
+          userId,
+          maxResults: params.max_results,
+          hasPaginationToken: !!paginationToken
+        });
+        
+        return await client.get('/users/me/bookmarks', { params });
+      });
+      
+      const data = response.data;
 
-      const params = {
-        count: Math.min(count, 200), // v1.1 límite máximo
-        include_entities: true,
-        tweet_mode: 'extended' // Para obtener texto completo
-      };
+      // Procesar tweets
+      const tweets = data.data || [];
+      const users = data.includes?.users || [];
+      const media = data.includes?.media || [];
 
-      if (maxId) {
-        params.max_id = maxId;
-      }
+      // Mapear usuarios por ID para búsqueda rápida
+      const userMap = {};
+      users.forEach(user => {
+        userMap[user.id] = user;
+      });
 
-      if (screenName) {
-        params.screen_name = screenName;
-      } else if (userId) {
-        params.user_id = userId;
-      }
+      // Mapear media por key
+      const mediaMap = {};
+      media.forEach(m => {
+        mediaMap[m.media_key] = m;
+      });
 
-      const response = await client.get('/statuses/user_timeline.json', { params });
-      const tweets = response.data;
-
-      // Procesar tweets del formato v1.1
+      // Procesar y enriquecer tweets
       const processedTweets = tweets.map(tweet => {
+        const author = userMap[tweet.author_id] || {};
+        const tweetMedia = tweet.attachments?.media_keys?.map(key => mediaMap[key]) || [];
+
         return {
-          tweetId: tweet.id_str,
-          content: tweet.full_text || tweet.text,
-          authorId: tweet.user.id_str,
-          authorUsername: tweet.user.screen_name,
-          authorName: tweet.user.name,
+          tweetId: tweet.id,
+          content: tweet.text,
+          authorId: tweet.author_id,
+          authorUsername: author.username || 'unknown',
+          authorName: author.name || 'Unknown User',
           createdAtTwitter: new Date(tweet.created_at),
-          bookmarkedAt: new Date(), // No tenemos fecha real de bookmark
-          retweetCount: tweet.retweet_count || 0,
-          likeCount: tweet.favorite_count || 0,
-          replyCount: 0, // No disponible en v1.1
-          mediaUrls: tweet.entities?.media ? JSON.stringify(tweet.entities.media.map(m => m.media_url_https)) : null,
-          hashtags: this.extractHashtags(tweet.full_text || tweet.text),
-          mentions: this.extractMentions(tweet.full_text || tweet.text),
+          bookmarkedAt: new Date(), // Twitter no proporciona fecha de bookmark
+          retweetCount: tweet.public_metrics?.retweet_count || 0,
+          likeCount: tweet.public_metrics?.like_count || 0,
+          replyCount: tweet.public_metrics?.reply_count || 0,
+          mediaUrls: tweetMedia.length > 0 ? JSON.stringify(tweetMedia.map(m => m.url || m.preview_image_url)) : null,
+          hashtags: this.extractHashtags(tweet.text),
+          mentions: this.extractMentions(tweet.text),
           userId
         };
       });
 
       return {
         tweets: processedTweets,
-        nextMaxId: tweets.length > 0 ? tweets[tweets.length - 1].id_str : null,
-        resultCount: tweets.length
+        nextToken: data.meta?.next_token || null,
+        resultCount: data.meta?.result_count || 0
       };
 
     } catch (error) {
       if (error.isTwitterError) {
         throw error;
       }
-      throw new TwitterAPIError('Error obteniendo timeline del usuario', 500);
+      throw new TwitterAPIError('Error obteniendo bookmarks', 500);
     }
   }
 
@@ -209,29 +284,30 @@ class TwitterService {
     return mentions.length > 0 ? JSON.stringify(mentions) : null;
   }
 
-  // Sincronizar timeline del usuario (alternativa a bookmarks)
-  async syncUserTimeline(userId, screenName = null) {
+  // Sincronizar todos los bookmarks de un usuario
+  async syncUserBookmarks(userId) {
     const startTime = Date.now();
     let totalTweets = 0;
     let newTweets = 0;
-    let maxId = null;
+    let paginationToken = null;
     let allTweets = [];
+    let syncLog = null; // Declarar syncLog fuera del try para que esté disponible en el catch
 
     try {
-      // Obtener usuario
+      // Obtener usuario y su token
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { id: true, username: true }
+        select: { id: true, accessToken: true, username: true }
       });
 
-      if (!user) {
-        throw new AppError('Usuario no encontrado', 404);
+      if (!user || !user.accessToken) {
+        throw new AppError('Usuario no encontrado o sin token de acceso', 404);
       }
 
       logSync(userId, 'SYNC_START', { username: user.username });
 
       // Crear log de sincronización
-      const syncLog = await prisma.syncLog.create({
+      syncLog = await prisma.syncLog.create({
         data: {
           userId,
           status: 'running',
@@ -239,31 +315,36 @@ class TwitterService {
         }
       });
 
-      // Obtener timeline con paginación
+      console.log('syncLog', syncLog);
+
+      // Obtener todos los bookmarks con paginación
       do {
-        const result = await this.getUserTimeline(
+        const result = await this.getBookmarks(
+          user.accessToken,
           userId,
-          screenName || user.username,
-          maxId,
-          200
+          paginationToken,
+          25 // Lotes muy pequeños para evitar rate limits
         );
 
         allTweets = allTweets.concat(result.tweets);
         totalTweets += result.resultCount;
-        maxId = result.nextMaxId;
+        paginationToken = result.nextToken;
 
         logSync(userId, 'SYNC_BATCH', {
           batchSize: result.resultCount,
           totalSoFar: allTweets.length,
-          hasNext: !!maxId
+          hasNext: !!paginationToken
         });
 
-        // Pausa entre requests para evitar rate limits
-        if (maxId) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
+        // Pausa más larga entre requests para evitar rate limits
+        if (paginationToken) {
+          logSync(userId, 'SYNC_PAUSE', {
+            message: `Esperando ${this.rateLimitDelay}ms antes del siguiente lote...`
+          });
+          await new Promise(resolve => setTimeout(resolve, this.rateLimitDelay));
         }
 
-      } while (maxId && allTweets.length < 1000); // Límite de 1000 tweets por sincronización
+      } while (paginationToken);
 
       // Guardar tweets en la base de datos
       for (const tweetData of allTweets) {
@@ -347,61 +428,60 @@ class TwitterService {
     }
   }
 
-  // Obtener información del usuario por screen_name (v1.1)
-  async getUserByScreenName(screenName) {
+  // Obtener información del usuario actual de Twitter
+  async getCurrentUser(accessToken) {
+    if (!accessToken) {
+      throw new TwitterAPIError('Se requiere token de acceso del usuario', 401, 'MISSING_ACCESS_TOKEN');
+    }
+
+    console.log('Using user accessToken for /users/me');
+    
     try {
-      const client = this.createHTTPClient(null, true); // Usar app auth
+      // IMPORTANTE: /users/me REQUIERE autenticación de usuario
+      const client = this.createHTTPClient(accessToken); // Usar el accessToken del usuario
       
-      const response = await client.get('/users/show.json', {
+      const response = await client.get('/users/me', {
         params: {
-          screen_name: screenName,
-          include_entities: false
+          'user.fields': 'id,name,username,profile_image_url,public_metrics'
         }
       });
 
-      const user = response.data;
-      
-      return {
-        id: user.id_str,
-        name: user.name,
-        username: user.screen_name,
-        profileImageUrl: user.profile_image_url_https,
-        followersCount: user.followers_count,
-        friendsCount: user.friends_count,
-        statusesCount: user.statuses_count
-      };
+      return response.data.data;
       
     } catch (error) {
+      console.log('getCurrentUser error:', error.message);
+      
       if (error.isTwitterError) {
+        // Si es error 401/403, el token del usuario probablemente está expirado
+        if (error.status === 401 || error.status === 403) {
+          throw new TwitterAPIError(
+            'Token de usuario inválido o expirado. El usuario debe reautorizar la aplicación.',
+            error.status,
+            'INVALID_USER_TOKEN'
+          );
+        }
         throw error;
       }
+      
       throw new TwitterAPIError('Error obteniendo información del usuario', 500);
     }
   }
 
-  // Obtener información del usuario por ID (v1.1)
-  async getUserById(userId) {
+  // Método alternativo para obtener información de usuario por ID (usa app auth)
+  async getUserById(userId, accessToken = null) {
     try {
-      const client = this.createHTTPClient(null, true); // Usar app auth
+      // Primero intentar con token de usuario si está disponible
+      const client = accessToken ? 
+        this.createHTTPClient(accessToken) : 
+        this.createHTTPClient(null, true); // Usar app auth
       
-      const response = await client.get('/users/show.json', {
+      const response = await client.get(`/users/${userId}`, {
         params: {
-          user_id: userId,
-          include_entities: false
+          'user.fields': 'id,name,username,profile_image_url,public_metrics'
         }
       });
 
-      const user = response.data;
-      
-      return {
-        id: user.id_str,
-        name: user.name,
-        username: user.screen_name,
-        profileImageUrl: user.profile_image_url_https,
-        followersCount: user.followers_count,
-        friendsCount: user.friends_count,
-        statusesCount: user.statuses_count
-      };
+      return response.data.data;
       
     } catch (error) {
       if (error.isTwitterError) {
@@ -410,45 +490,22 @@ class TwitterService {
       throw new TwitterAPIError('Error obteniendo información del usuario por ID', 500);
     }
   }
-
-  // Método para verificar si las credenciales son válidas
-  async verifyCredentials() {
-    try {
-      const client = this.createHTTPClient(null, true);
-      
-      const response = await client.get('/account/verify_credentials.json');
-      
-      return {
-        valid: true,
-        user: response.data
-      };
-      
-    } catch (error) {
-      return {
-        valid: false,
-        error: error.message
-      };
-    }
-  }
 }
 
 // Exportar instancia singleton
 const twitterService = new TwitterService();
 
 // Funciones de conveniencia
-export const getUserTimeline = (userId, screenName, maxId, count) =>
-  twitterService.getUserTimeline(userId, screenName, maxId, count);
+export const getBookmarks = (accessToken, userId, paginationToken, maxResults) =>
+  twitterService.getBookmarks(accessToken, userId, paginationToken, maxResults);
 
-export const syncUserTimeline = (userId, screenName) =>
-  twitterService.syncUserTimeline(userId, screenName);
+export const syncUserBookmarks = (userId) =>
+  twitterService.syncUserBookmarks(userId);
 
-export const getUserByScreenName = (screenName) =>
-  twitterService.getUserByScreenName(screenName);
+export const getCurrentUser = (accessToken) =>
+  twitterService.getCurrentUser(accessToken);
 
-export const getUserById = (userId) =>
-  twitterService.getUserById(userId);
-
-export const verifyCredentials = () =>
-  twitterService.verifyCredentials();
+export const getUserById = (userId, accessToken) =>
+  twitterService.getUserById(userId, accessToken);
 
 export default twitterService;

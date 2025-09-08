@@ -59,7 +59,7 @@ import Layout from '../layouts/Layout.astro';
 
 <script>
   // API base URL
-  const API_BASE = 'http://127.0.0.1:3001/';
+  const API_BASE = 'http://192.168.31.157:3001';
   
   // Check authentication
   async function checkAuth() {
@@ -77,7 +77,7 @@ import Layout from '../layouts/Layout.astro';
     if (!token) return;
     
     try {
-      const response = await fetch(`${API_BASE}/categories`, {
+      const response = await fetch(`${API_BASE}/api/v1/categories`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -175,7 +175,7 @@ import Layout from '../layouts/Layout.astro';
     }
     
     try {
-      const response = await fetch(`${API_BASE}/categories`, {
+      const response = await fetch(`${API_BASE}/api/v1/categories`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -219,7 +219,7 @@ import Layout from '../layouts/Layout.astro';
     const newColor = prompt('Nuevo color (hex, opcional):', '#3B82F6');
     
     try {
-      const response = await fetch(`${API_BASE}/categories/${categoryId}`, {
+      const response = await fetch(`${API_BASE}/api/v1/categories/${categoryId}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -255,7 +255,7 @@ import Layout from '../layouts/Layout.astro';
     }
     
     try {
-      const response = await fetch(`${API_BASE}/categories/${categoryId}`, {
+      const response = await fetch(`${API_BASE}/api/v1/categories/${categoryId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`

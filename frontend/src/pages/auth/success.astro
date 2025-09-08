@@ -59,12 +59,14 @@ import Layout from '../../layouts/Layout.astro';
 
 <script>
   // API base URL
-  const API_BASE = 'http://127.0.0.1:3001/';
+  const API_BASE = 'http://192.168.31.157:3001';
   
   // Obtener parámetros de la URL
   function getUrlParams() {
     const urlParams = new URLSearchParams(window.location.search);
     return {
+      token: urlParams.get('token'),
+      user: urlParams.get('user'),
       code: urlParams.get('code'),
       state: urlParams.get('state'),
       error: urlParams.get('error'),
@@ -72,7 +74,39 @@ import Layout from '../../layouts/Layout.astro';
     };
   }
   
-  // Procesar autenticación exitosa
+  // Procesar autenticación exitosa con token del backend
+  function processSuccessfulAuthWithToken(token, userParam) {
+    try {
+      // Guardar token en localStorage
+      if (token) {
+        localStorage.setItem('authToken', token);
+      }
+      
+      // Guardar información del usuario si está disponible
+      if (userParam) {
+        try {
+          const userInfo = JSON.parse(decodeURIComponent(userParam));
+          localStorage.setItem('userInfo', JSON.stringify(userInfo));
+        } catch (e) {
+          console.warn('Error parseando información del usuario:', e);
+        }
+      }
+      
+      // Mostrar estado de éxito
+      showSuccessState();
+      
+      // Redirigir al dashboard después de 2 segundos
+      setTimeout(() => {
+        window.location.href = '/';
+      }, 2000);
+      
+    } catch (error) {
+      console.error('Error procesando autenticación:', error);
+      showErrorState(error.message);
+    }
+  }
+
+  // Procesar autenticación exitosa con code/state (callback directo de Twitter)
   async function processSuccessfulAuth(code, state) {
     try {
       const response = await fetch(`${API_BASE}/auth/callback`, {
@@ -160,8 +194,11 @@ import Layout from '../../layouts/Layout.astro';
     if (params.error) {
       // Error de autenticación
       processAuthError(params.error, params.error_description);
-    } else if (params.code) {
-      // Autenticación exitosa
+    } else if (params.token && params.user) {
+      // Autenticación exitosa con token del backend (flujo normal)
+      processSuccessfulAuthWithToken(params.token, params.user);
+    } else if (params.code && params.state) {
+      // Autenticación exitosa con code/state (callback directo de Twitter)
       processSuccessfulAuth(params.code, params.state);
     } else {
       // No hay parámetros válidos

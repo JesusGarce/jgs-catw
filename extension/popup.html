@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>X Bookmarks</title>
+  <style>
+    :root {
+      --bg-color: #1a202c;
+      --text-color: #f7fafc;
+      --primary-color: #4299e1;
+      --primary-hover-color: #3182ce;
+      --secondary-text-color: #a0aec0;
+      --success-bg: #38a169;
+      --error-bg: #e53e3e;
+      --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+
+    body {
+      width: 300px;
+      padding: 24px;
+      font-family: var(--font-family);
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+    }
+
+    h1 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    #status {
+      font-size: 0.875rem;
+      color: var(--secondary-text-color);
+      margin-bottom: 1rem;
+    }
+    
+    #status a {
+      color: var(--primary-color);
+      text-decoration: none;
+    }
+
+    #data-display {
+      display: none;
+      margin-top: 1rem;
+    }
+
+    #data-display p {
+      color: var(--secondary-text-color);
+      margin-bottom: 0.5rem;
+    }
+
+    #tweet-count {
+      font-size: 2.25rem;
+      font-weight: 800;
+      color: var(--primary-color);
+    }
+
+    #send-button {
+      display: none;
+      margin-top: 1rem;
+      padding: 10px 24px;
+      background-color: var(--primary-color);
+      color: var(--text-color);
+      font-weight: 600;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+      transition: background-color 0.2s;
+      border: none;
+      cursor: pointer;
+    }
+
+    #send-button:hover {
+      background-color: var(--primary-hover-color);
+    }
+
+    #send-button:disabled {
+      background-color: #4a5568;
+      cursor: not-allowed;
+    }
+
+    #message-box {
+      display: none;
+      margin-top: 1rem;
+      padding: 12px;
+      font-size: 0.875rem;
+      border-radius: 8px;
+      color: var(--text-color);
+    }
+
+    .message-success {
+      background-color: var(--success-bg);
+    }
+
+    .message-error {
+      background-color: var(--error-bg);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Bookmarks en X</h1>
+    <p id="status">
+      Navega a <a href="https://twitter.com/i/bookmarks" target="_blank">twitter.com/i/bookmarks</a>
+    </p>
+
+    <div id="data-display">
+      <p>Tweets Cargados:</p>
+      <p id="tweet-count">0</p>
+    </div>
+
+    <div id="user-info" style="display: none; margin-top: 1rem; padding: 12px; background-color: #2d3748; border-radius: 8px; font-size: 0.875rem;">
+      <p style="margin: 0; color: var(--secondary-text-color);">Usuario:</p>
+      <p id="user-display" style="margin: 0; font-weight: 600; color: var(--text-color);"></p>
+    </div>
+
+    <button id="send-button">
+      Enviar a Backend
+    </button>
+
+    <button id="auth-button" style="display: none; margin-top: 0.5rem; padding: 8px 16px; background-color: #4a5568; color: var(--text-color); font-weight: 600; border-radius: 6px; border: none; cursor: pointer; font-size: 0.875rem;">
+      Configurar Autenticación
+    </button>
+
+    <button id="open-webapp-button" style="display: none; margin-top: 0.5rem; padding: 8px 16px; background-color: #38a169; color: var(--text-color); font-weight: 600; border-radius: 6px; border: none; cursor: pointer; font-size: 0.875rem;">
+      Abrir Aplicación Web
+    </button>
+
+    <div id="message-box"></div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

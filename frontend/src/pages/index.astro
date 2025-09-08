@@ -78,13 +78,16 @@ import Layout from '../layouts/Layout.astro';
       <!-- Sincronizar -->
       <div class="card">
         <h3 class="text-lg font-medium text-gray-900 mb-4">Sincronizar Tweets</h3>
-        <p class="text-gray-600 mb-4">Sincroniza tu timeline de Twitter para obtener los tweets más recientes.</p>
-        <button id="syncBtn" class="btn-primary">
-          <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-          </svg>
-          Sincronizar Ahora
-        </button>
+        <p class="text-gray-600 mb-4">Usa la extensión de Chrome para obtener tus tweets guardados. <span class="text-sm text-blue-600">Instala la extensión y navega a twitter.com/i/bookmarks para comenzar.</span></p>
+        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <h4 class="font-medium text-blue-900 mb-2">Instrucciones:</h4>
+          <ol class="text-sm text-blue-800 space-y-1">
+            <li>1. <a href="/extension" class="underline font-medium">Instala la extensión de Chrome</a></li>
+            <li>2. Ve a <a href="https://twitter.com/i/bookmarks" target="_blank" class="underline">twitter.com/i/bookmarks</a></li>
+            <li>3. Haz scroll para cargar tweets</li>
+            <li>4. Haz clic en "Enviar a Backend" en la extensión</li>
+          </ol>
+        </div>
       </div>
 
       <!-- Ver Tweets -->
@@ -118,11 +121,12 @@ import Layout from '../layouts/Layout.astro';
 
 <script>
   // API base URL
-  const API_BASE = 'http://127.0.0.1:3001/';
+      const API_BASE = 'http://192.168.31.157:3001';
   
   // Check authentication status
   async function checkAuth() {
     try {
+      console.log('checkAuth');
       const token = localStorage.getItem('authToken');
       if (!token) {
         // Show login button
@@ -131,7 +135,7 @@ import Layout from '../layouts/Layout.astro';
       }
       
       // Verify token
-      const response = await fetch(`${API_BASE}/user/profile`, {
+      const response = await fetch(`${API_BASE}/api/v1/user/profile`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -158,7 +162,7 @@ import Layout from '../layouts/Layout.astro';
     
     try {
       // Load stats
-      const statsResponse = await fetch(`${API_BASE}/stats`, {
+      const statsResponse = await fetch(`${API_BASE}/api/v1/stats`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -173,7 +177,7 @@ import Layout from '../layouts/Layout.astro';
       }
       
       // Load recent tweets
-      const tweetsResponse = await fetch(`${API_BASE}/tweets?limit=5`, {
+      const tweetsResponse = await fetch(`${API_BASE}/api/v1/tweets?limit=5`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -230,49 +234,7 @@ import Layout from '../layouts/Layout.astro';
     `).join('');
   }
   
-  // Sync functionality
-  document.getElementById('syncBtn')?.addEventListener('click', async () => {
-    const token = localStorage.getItem('authToken');
-    if (!token) {
-      alert('Debes iniciar sesión primero');
-      return;
-    }
-    
-    const button = document.getElementById('syncBtn');
-    const originalText = button.innerHTML;
-    
-    try {
-      button.disabled = true;
-      button.innerHTML = `
-        <svg class="animate-spin w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24">
-          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-        </svg>
-        Sincronizando...
-      `;
-      
-      const response = await fetch(`${API_BASE}/sync`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      
-      if (response.ok) {
-        const result = await response.json();
-        alert(`Sincronización completada. ${result.newTweets} tweets nuevos.`);
-        loadDashboardData();
-      } else {
-        throw new Error('Error en la sincronización');
-      }
-    } catch (error) {
-      console.error('Error:', error);
-      alert('Error durante la sincronización');
-    } finally {
-      button.disabled = false;
-      button.innerHTML = originalText;
-    }
-  });
+  // Sync functionality removed - now using Chrome extension
   
   // Initialize dashboard
   document.addEventListener('DOMContentLoaded', async () => {

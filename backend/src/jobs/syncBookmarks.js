@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { logger, logSync, logError } from '../utils/logger.js';
-import { syncUserTimeline } from '../services/twitterService.js';
+import { syncUserBookmarks } from '../services/twitterService.js';
 
 const prisma = new PrismaClient();
 
@@ -42,7 +42,7 @@ export async function syncAllUsers() {
       try {
         logger.info(`📥 Sincronizando usuario: ${user.username} (${user.id})`);
         
-        const result = await syncUserTimeline(user.id, user.username);
+        const result = await syncUserBookmarks(user.id);
         
         logSync(user.id, 'AUTO_SYNC_SUCCESS', {
           username: user.username,
@@ -114,7 +114,7 @@ export async function syncUserWithRetry(userId, maxRetries = 3) {
     try {
       logger.info(`🔄 Intento ${attempt}/${maxRetries} - Sincronizando usuario ${userId}`);
       
-      const result = await syncUserTimeline(userId, user.username);
+      const result = await syncUserBookmarks(userId);
       
       logger.info(`✅ Usuario ${userId} sincronizado exitosamente en intento ${attempt}`);
       return result;

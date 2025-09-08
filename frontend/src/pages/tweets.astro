@@ -109,7 +109,7 @@ import Layout from '../layouts/Layout.astro';
 
 <script>
   // API base URL
-  const API_BASE = 'http://127.0.0.1:3001';
+      const API_BASE = 'http://192.168.31.157:3001';
   
   // State
   let currentPage = 1;
@@ -132,7 +132,7 @@ import Layout from '../layouts/Layout.astro';
   async function loadCategories() {
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch(`${API_BASE}/categories`, {
+      const response = await fetch(`${API_BASE}/api/v1/categories`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -182,7 +182,7 @@ import Layout from '../layouts/Layout.astro';
       if (search) params.append('search', search);
       if (category) params.append('category', category);
       
-      const response = await fetch(`${API_BASE}/tweets?${params}`, {
+      const response = await fetch(`${API_BASE}/api/v1/tweets?${params}`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -299,7 +299,7 @@ import Layout from '../layouts/Layout.astro';
     if (!category) return;
     
     try {
-      const response = await fetch(`${API_BASE}/tweets/${tweetId}/category`, {
+      const response = await fetch(`${API_BASE}/api/v1/tweets/${tweetId}/category`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
