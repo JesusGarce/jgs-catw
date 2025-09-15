@@ -39,7 +39,7 @@ model Tweet {
   authorId         String   @map("author_id")
   createdAtTwitter DateTime @map("created_at_twitter")
   bookmarkedAt     DateTime @map("bookmarked_at")
-  category         String?  @db.VarChar(100)
+  category         String?  @db.VarChar(100) // Mantener para compatibilidad
   confidenceScore  Float?   @map("confidence_score") @db.Float
   processed        Boolean  @default(false)
   isArchived       Boolean  @default(false) @map("is_archived")
@@ -57,6 +57,7 @@ model Tweet {
 
   // Relaciones
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tweetCategories TweetCategory[]
 
   @@index([userId, category], name: "idx_user_category")
   @@index([bookmarkedAt], name: "idx_bookmarked_at")
@@ -79,9 +80,29 @@ model Category {
 
   // Relaciones
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tweetCategories TweetCategory[]
 
   @@unique([userId, name], name: "unique_user_category")
   @@map("categories")
+}
+
+// Tabla de relación many-to-many entre tweets y categorías
+model TweetCategory {
+  id         Int      @id @default(autoincrement())
+  tweetId    Int      @map("tweet_id")
+  categoryId Int      @map("category_id")
+  confidence Float?   @db.Float // Confianza de la categorización
+  isPrimary  Boolean  @default(false) @map("is_primary") // Categoría principal
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  // Relaciones
+  tweet    Tweet    @relation(fields: [tweetId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([tweetId, categoryId], name: "unique_tweet_category")
+  @@index([tweetId], name: "idx_tweet_category_tweet")
+  @@index([categoryId], name: "idx_tweet_category_category")
+  @@map("tweet_categories")
 }
 
 model SyncLog {

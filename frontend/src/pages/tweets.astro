@@ -109,7 +109,7 @@ import Layout from '../layouts/Layout.astro';
 
 <script>
   // API base URL
-      const API_BASE = 'http://192.168.31.157:3001';
+  const API_BASE = 'http://127.0.0.1:3001';
   
   // State
   let currentPage = 1;
@@ -117,6 +117,14 @@ import Layout from '../layouts/Layout.astro';
   let totalPages = 1;
   let totalTweets = 0;
   let categories = [];
+
+  // Declarar funciones globales para TypeScript
+  declare global {
+    interface Window {
+      recategorizeTweet: (tweetId: string) => Promise<void>;
+      changeCategory: (tweetId: string) => Promise<void>;
+    }
+  }
   
   // Check authentication
   async function checkAuth() {
@@ -162,14 +170,22 @@ import Layout from '../layouts/Layout.astro';
     const token = localStorage.getItem('authToken');
     if (!token) return;
     
-    const search = document.getElementById('search').value;
-    const category = document.getElementById('category').value;
-    const sortBy = document.getElementById('sortBy').value;
-    const sortOrder = document.getElementById('sortOrder').value;
+    const searchEl = document.getElementById('search') as HTMLInputElement;
+    const categoryEl = document.getElementById('category') as HTMLSelectElement;
+    const sortByEl = document.getElementById('sortBy') as HTMLSelectElement;
+    const sortOrderEl = document.getElementById('sortOrder') as HTMLSelectElement;
+    
+    const search = searchEl?.value || '';
+    const category = categoryEl?.value || '';
+    const sortBy = sortByEl?.value || 'bookmarkedAt';
+    const sortOrder = sortOrderEl?.value || 'desc';
     
     // Show loading
-    document.getElementById('loadingState').style.display = 'block';
-    document.getElementById('tweetsContainer').innerHTML = '';
+    const loadingState = document.getElementById('loadingState');
+    const tweetsContainer = document.getElementById('tweetsContainer');
+    
+    if (loadingState) loadingState.style.display = 'block';
+    if (tweetsContainer) tweetsContainer.innerHTML = '';
     
     try {
       const params = new URLSearchParams({
@@ -197,22 +213,30 @@ import Layout from '../layouts/Layout.astro';
       }
     } catch (error) {
       console.error('Error:', error);
-      document.getElementById('tweetsContainer').innerHTML = `
-        <div class="text-center py-12">
-          <svg class="mx-auto h-12 w-12 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
-          </svg>
-          <p class="mt-2 text-gray-500">Error cargando tweets</p>
-        </div>
-      `;
+      const tweetsContainer = document.getElementById('tweetsContainer');
+      if (tweetsContainer) {
+        tweetsContainer.innerHTML = `
+          <div class="text-center py-12">
+            <svg class="mx-auto h-12 w-12 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+            </svg>
+            <p class="mt-2 text-gray-500">Error cargando tweets</p>
+          </div>
+        `;
+      }
     } finally {
-      document.getElementById('loadingState').style.display = 'none';
+      const loadingState = document.getElementById('loadingState');
+      if (loadingState) {
+        loadingState.style.display = 'none';
+      }
     }
   }
   
   // Display tweets
   function displayTweets(tweets) {
     const container = document.getElementById('tweetsContainer');
+    
+    if (!container) return;
     
     if (!tweets || tweets.length === 0) {
       container.innerHTML = `
@@ -238,13 +262,26 @@ import Layout from '../layouts/Layout.astro';
           <div class="flex-1 min-w-0">
             <div class="flex items-center justify-between mb-2">
               <div class="flex items-center space-x-2">
-                <span class="text-sm font-medium text-gray-900">@${tweet.authorUsername}</span>
+                <span class="text-sm font-medium text-gray-900">${tweet.authorUsername}</span>
                 <span class="text-sm text-gray-500">${new Date(tweet.createdAtTwitter).toLocaleDateString()}</span>
-                ${tweet.category ? `<span class="badge badge-primary">${tweet.category}</span>` : '<span class="badge badge-warning">Sin categoría</span>'}
+                ${tweet.categories && tweet.categories.length > 0 ? 
+                  tweet.categories.map(cat => 
+                    `<span class="badge ${cat.isPrimary ? 'badge-primary' : 'badge-secondary'} mr-1" style="background-color: ${cat.color || '#6B7280'}; color: white;">
+                      ${cat.name}
+                      ${cat.confidence ? `<span class="text-xs opacity-75">(${Math.round(cat.confidence * 100)}%)</span>` : ''}
+                    </span>`
+                  ).join('') : 
+                  '<span class="badge badge-warning">Sin categoría</span>'
+                }
               </div>
               
               <div class="flex items-center space-x-2">
-                <button onclick="changeCategory('${tweet.id}')" class="text-sm text-primary-600 hover:text-primary-800">
+                <button onclick="recategorizeTweet('${tweet.id}')" class="text-sm text-green-600 hover:text-green-800" title="Recategorizar con IA">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
+                  </svg>
+                </button>
+                <button onclick="changeCategory('${tweet.id}')" class="text-sm text-primary-600 hover:text-primary-800" title="Cambiar categoría manualmente">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path>
                   </svg>
@@ -282,30 +319,73 @@ import Layout from '../layouts/Layout.astro';
     totalPages = pagination.totalPages;
     totalTweets = pagination.totalItems;
     
-    document.getElementById('currentPage').textContent = currentPage;
-    document.getElementById('totalPages').textContent = totalPages;
-    document.getElementById('tweetCount').textContent = totalTweets;
+    const currentPageEl = document.getElementById('currentPage');
+    const totalPagesEl = document.getElementById('totalPages');
+    const tweetCountEl = document.getElementById('tweetCount');
+    const prevPageEl = document.getElementById('prevPage') as HTMLButtonElement;
+    const nextPageEl = document.getElementById('nextPage') as HTMLButtonElement;
     
-    document.getElementById('prevPage').disabled = !pagination.hasPrev;
-    document.getElementById('nextPage').disabled = !pagination.hasNext;
+    if (currentPageEl) currentPageEl.textContent = currentPage.toString();
+    if (totalPagesEl) totalPagesEl.textContent = totalPages.toString();
+    if (tweetCountEl) tweetCountEl.textContent = totalTweets.toString();
+    
+    if (prevPageEl) prevPageEl.disabled = !pagination.hasPrev;
+    if (nextPageEl) nextPageEl.disabled = !pagination.hasNext;
   }
   
-  // Change category
-  async function changeCategory(tweetId) {
+  // Recategorize tweet with AI - Global function
+  window.recategorizeTweet = async function(tweetId) {
     const token = localStorage.getItem('authToken');
     if (!token) return;
     
-    const category = prompt('Ingresa la nueva categoría:');
+    if (!confirm('¿Recategorizar este tweet usando IA?')) return;
+    
+    try {
+      const response = await fetch(`${API_BASE}/api/v1/tweets/${tweetId}/categorize`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        alert(`✅ Tweet recategorizado!\n\nCategorías asignadas:\n${data.categories.map(cat => `• ${cat.name} (${Math.round(cat.confidence * 100)}%)`).join('\n')}`);
+        loadTweets(); // Reload tweets
+      } else {
+        const error = await response.json();
+        alert(`Error: ${error.error || 'Error recategorizando tweet'}`);
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      alert('Error recategorizando tweet');
+    }
+  }
+
+  // Change category (legacy function for compatibility) - Global function
+  window.changeCategory = async function(tweetId) {
+    const token = localStorage.getItem('authToken');
+    if (!token) return;
+    
+    const category = prompt('Ingresa la nueva categoría principal:');
     if (!category) return;
     
     try {
-      const response = await fetch(`${API_BASE}/api/v1/tweets/${tweetId}/category`, {
+      // Crear estructura de categorías múltiples
+      const categories = [{
+        category: category,
+        confidence: 0.8,
+        isPrimary: true
+      }];
+
+      const response = await fetch(`${API_BASE}/api/v1/tweets/${tweetId}/categories`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ category })
+        body: JSON.stringify({ categories })
       });
       
       if (response.ok) {
@@ -340,9 +420,12 @@ import Layout from '../layouts/Layout.astro';
   });
   
   document.getElementById('pageSize')?.addEventListener('change', (e) => {
-    pageSize = parseInt(e.target.value);
-    currentPage = 1;
-    loadTweets();
+    const target = e.target as HTMLSelectElement;
+    if (target) {
+      pageSize = parseInt(target.value);
+      currentPage = 1;
+      loadTweets();
+    }
   });
   
   // Initialize page

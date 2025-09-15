@@ -19,6 +19,7 @@ import userRoutes from './routes/user.js';
 
 // Importar servicios
 import { startScheduledJobs } from './jobs/index.js';
+import { categorizeTweet, saveTweetCategories } from './services/categorizationService.js';
 import { initializeAI } from './services/categorizationService.js';
 
 // Cargar variables de entorno
@@ -192,11 +193,30 @@ app.post('/api/v1/tweets/extension', authMiddleware, async (req, res) => {
           continue;
         }
 
+        // Categorizar el tweet automáticamente
+        let category = 'General';
+        let categories = [];
+        const tweetContent = tweetData.tweet_content || '';
+        
+        if (tweetContent) {
+          try {
+            const categorizationResult = await categorizeTweet(tweetContent, userId);
+            categories = categorizationResult.categories;
+            category = categories.find(cat => cat.isPrimary)?.category || categories[0]?.category || 'General';
+            logger.debug(`Tweet de extensión categorizado: ${categories.map(cat => cat.category).join(', ')}`);
+          } catch (error) {
+            logger.warn('Error en categorización automática de extensión:', error.message);
+            categories = [{ category: 'General', confidence: 0.3, isPrimary: true }];
+          }
+        } else {
+          categories = [{ category: 'General', confidence: 0.3, isPrimary: true }];
+        }
+
         // Crear nuevo tweet en la base de datos
         const tweet = await prisma.tweet.create({
           data: {
             tweetId,
-            content: tweetData.tweet_content || '',
+            content: tweetContent,
             authorId: tweetData.user_handle || 'unknown',
             authorUsername: tweetData.user_handle || 'unknown',
             authorName: tweetData.user_name || 'Unknown User',
@@ -210,9 +230,19 @@ app.post('/api/v1/tweets/extension', authMiddleware, async (req, res) => {
             hashtags: hashtags.length > 0 ? JSON.stringify(hashtags) : null,
             mentions: mentions.length > 0 ? JSON.stringify(mentions) : null,
             userId,
+            category,
             //source: 'extension' // Marcar como proveniente de la extensión
           }
         });
+
+        // Guardar categorías múltiples
+        if (categories.length > 0) {
+          try {
+            await saveTweetCategories(tweet.id, categories, userId);
+          } catch (error) {
+            logger.warn('Error guardando categorías múltiples de extensión:', error.message);
+          }
+        }
 
         processedCount++;
         newTweetsCount++;
@@ -257,15 +287,17 @@ app.use(errorHandler);
 async function startServer() {
   try {
     // Inicializar modelo de IA si está habilitado
-    if (process.env.ENABLE_AUTO_CATEGORIZATION === 'true') {
-      logger.info('Inicializando modelo de categorización...');
-      await initializeAI();
-      logger.info('Modelo de categorización inicializado');
-    }
-
     // Iniciar trabajos programados
     startScheduledJobs();
     logger.info('Trabajos programados iniciados');
+
+    // Inicializar modelo de IA para categorización
+    if (process.env.ENABLE_AUTO_CATEGORIZATION === 'true') {
+      logger.info('Inicializando modelo de IA...');
+      initializeAI().catch(error => {
+        logger.warn('Error inicializando IA:', error.message);
+      });
+    }
 
     // Iniciar servidor
     app.listen(PORT, () => {

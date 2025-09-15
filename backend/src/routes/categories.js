@@ -2,6 +2,12 @@ import express from 'express';
 import { PrismaClient } from '@prisma/client';
 import { logger } from '../utils/logger.js';
 import { AppError } from '../middleware/errorHandler.js';
+import { 
+  createAutoCategories, 
+  recategorizeAllTweets, 
+  getSuggestedCategories,
+  initializeAI 
+} from '../services/categorizationService.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -14,15 +20,7 @@ router.get('/', async (req, res, next) => {
   try {
     const categories = await prisma.category.findMany({
       where: { userId: req.user.id },
-      orderBy: { sortOrder: 'asc' },
-      include: {
-        _count: {
-          select: {
-            // Contar tweets activos en cada categoría
-            // Nota: Esto requeriría una relación que no tenemos aún
-          }
-        }
-      }
+      orderBy: { sortOrder: 'asc' }
     });
 
     // Obtener conteo de tweets por categoría manualmente
@@ -359,6 +357,105 @@ router.get('/colors', (req, res) => {
   ];
 
   res.json({ colors: suggestedColors });
+});
+
+/**
+ * POST /api/v1/categories/auto-create
+ * Crear categorías automáticamente usando IA
+ */
+router.post('/auto-create', async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+
+    logger.info(`Iniciando creación automática de categorías para usuario ${userId}`);
+
+    const result = await createAutoCategories(userId);
+
+    logger.info('Categorías automáticas creadas:', {
+      userId,
+      created: result.created,
+      categorized: result.categorized,
+      totalProcessed: result.totalProcessed
+    });
+
+    res.json({
+      success: true,
+      message: 'Categorización automática completada',
+      result
+    });
+
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/v1/categories/recategorize
+ * Recategorizar todos los tweets usando IA
+ */
+router.post('/recategorize', async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+
+    logger.info(`Iniciando recategorización de tweets para usuario ${userId}`);
+
+    const result = await recategorizeAllTweets(userId);
+
+    logger.info('Recategorización completada:', {
+      userId,
+      processed: result.processed,
+      updated: result.updated
+    });
+
+    res.json({
+      success: true,
+      message: 'Recategorización completada',
+      result
+    });
+
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/v1/categories/suggestions
+ * Obtener categorías sugeridas basadas en el historial del usuario
+ */
+router.get('/suggestions', async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+
+    const suggestions = await getSuggestedCategories(userId);
+
+    res.json({
+      success: true,
+      suggestions
+    });
+
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/v1/categories/initialize-ai
+ * Inicializar el modelo de IA para categorización
+ */
+router.post('/initialize-ai', async (req, res, next) => {
+  try {
+    logger.info('Inicializando modelo de IA desde endpoint...');
+    
+    await initializeAI();
+
+    res.json({
+      success: true,
+      message: 'Modelo de IA inicializado correctamente'
+    });
+
+  } catch (error) {
+    next(error);
+  }
 });
 
 export default router;

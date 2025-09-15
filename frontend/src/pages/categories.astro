@@ -10,34 +10,79 @@ import Layout from '../layouts/Layout.astro';
       <p class="mt-2 text-gray-600">Gestiona las categorías para organizar tus tweets.</p>
     </div>
 
-    <!-- Add Category -->
+    <!-- AI Categorization Controls -->
     <div class="card mb-8">
-      <h3 class="text-lg font-medium text-gray-900 mb-4">Crear Nueva Categoría</h3>
-      <form id="addCategoryForm" class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <h3 class="text-lg font-medium text-gray-900 mb-4">🤖 Categorización Automática con IA</h3>
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <div>
-          <label for="categoryName" class="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
-          <input type="text" id="categoryName" placeholder="Ej: Tecnología" class="input" required>
-        </div>
-        
-        <div>
-          <label for="categoryDescription" class="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
-          <input type="text" id="categoryDescription" placeholder="Descripción opcional" class="input">
-        </div>
-        
-        <div>
-          <label for="categoryColor" class="block text-sm font-medium text-gray-700 mb-1">Color</label>
-          <input type="color" id="categoryColor" value="#3B82F6" class="input h-10">
-        </div>
-        
-        <div class="flex items-end">
-          <button type="submit" class="btn-primary w-full">
+          <button id="autoCreateCategories" class="btn-primary w-full">
             <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
             </svg>
-            Crear Categoría
+            Crear Categorías Automáticamente
           </button>
+          <p class="text-xs text-gray-500 mt-1">Analiza tus tweets y crea categorías inteligentes</p>
         </div>
-      </form>
+        
+        <div>
+          <button id="recategorizeTweets" class="btn-secondary w-full">
+            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+            </svg>
+            Recategorizar Tweets
+          </button>
+          <p class="text-xs text-gray-500 mt-1">Reclasifica todos tus tweets con IA</p>
+        </div>
+        
+        <div>
+          <button id="initializeAI" class="btn-outline w-full">
+            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+            </svg>
+            Inicializar IA
+          </button>
+          <p class="text-xs text-gray-500 mt-1">Cargar modelo de IA para categorización</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Manual Category Creation (Collapsed by default) -->
+    <div class="card mb-8">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-medium text-gray-900">Crear Categoría Manual</h3>
+        <button id="toggleManualForm" class="text-sm text-primary-600 hover:text-primary-800">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+          </svg>
+        </button>
+      </div>
+      <div id="manualFormContainer" class="hidden">
+        <form id="addCategoryForm" class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div>
+            <label for="categoryName" class="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
+            <input type="text" id="categoryName" placeholder="Ej: Tecnología" class="input" required>
+          </div>
+          
+          <div>
+            <label for="categoryDescription" class="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
+            <input type="text" id="categoryDescription" placeholder="Descripción opcional" class="input">
+          </div>
+          
+          <div>
+            <label for="categoryColor" class="block text-sm font-medium text-gray-700 mb-1">Color</label>
+            <input type="color" id="categoryColor" value="#3B82F6" class="input h-10">
+          </div>
+          
+          <div class="flex items-end">
+            <button type="submit" class="btn-primary w-full">
+              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+              </svg>
+              Crear Categoría
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
 
     <!-- Categories List -->
@@ -59,7 +104,7 @@ import Layout from '../layouts/Layout.astro';
 
 <script>
   // API base URL
-  const API_BASE = 'http://192.168.31.157:3001';
+  const API_BASE = 'http://127.0.0.1:3001';
   
   // Check authentication
   async function checkAuth() {
@@ -135,7 +180,11 @@ import Layout from '../layouts/Layout.astro';
         <div class="flex items-center space-x-4">
           <div class="text-right">
             <p class="text-sm font-medium text-gray-900">${category.tweetCount || 0} tweets</p>
-            <p class="text-xs text-gray-500">${category.isDefault ? 'Categoría por defecto' : 'Personalizada'}</p>
+            <p class="text-xs text-gray-500">
+              ${category.isDefault ? 'Categoría por defecto' : 
+                category.description && category.description.includes('generada automáticamente') ? 
+                '🤖 Generada por IA' : 'Personalizada'}
+            </p>
           </div>
           
           <div class="flex items-center space-x-2">
@@ -275,8 +324,158 @@ import Layout from '../layouts/Layout.astro';
     }
   }
   
+  // Auto create categories with AI
+  async function autoCreateCategories() {
+    const token = localStorage.getItem('authToken');
+    if (!token) return;
+    
+    const button = document.getElementById('autoCreateCategories');
+    const originalText = button.innerHTML;
+    
+    try {
+      button.disabled = true;
+      button.innerHTML = `
+        <svg class="animate-spin w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        Analizando tweets...
+      `;
+      
+      const response = await fetch(`${API_BASE}/api/v1/categories/auto-create`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        alert(`✅ Categorización automática completada!\n\n📊 Resultados:\n• Categorías creadas: ${data.result.created}\n• Tweets categorizados: ${data.result.categorized}\n• Total procesados: ${data.result.totalProcessed}`);
+        loadCategories();
+      } else {
+        const error = await response.json();
+        alert(`Error: ${error.error || 'Error en categorización automática'}`);
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      alert('Error en categorización automática');
+    } finally {
+      button.disabled = false;
+      button.innerHTML = originalText;
+    }
+  }
+  
+  // Recategorize all tweets
+  async function recategorizeTweets() {
+    const token = localStorage.getItem('authToken');
+    if (!token) return;
+    
+    if (!confirm('¿Estás seguro de que quieres recategorizar todos tus tweets? Esto puede tomar varios minutos.')) {
+      return;
+    }
+    
+    const button = document.getElementById('recategorizeTweets');
+    const originalText = button.innerHTML;
+    
+    try {
+      button.disabled = true;
+      button.innerHTML = `
+        <svg class="animate-spin w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        Recategorizando...
+      `;
+      
+      const response = await fetch(`${API_BASE}/api/v1/categories/recategorize`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        alert(`✅ Recategorización completada!\n\n📊 Resultados:\n• Tweets procesados: ${data.result.processed}\n• Tweets actualizados: ${data.result.updated}`);
+        loadCategories();
+      } else {
+        const error = await response.json();
+        alert(`Error: ${error.error || 'Error en recategorización'}`);
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      alert('Error en recategorización');
+    } finally {
+      button.disabled = false;
+      button.innerHTML = originalText;
+    }
+  }
+  
+  // Initialize AI model
+  async function initializeAI() {
+    const token = localStorage.getItem('authToken');
+    if (!token) return;
+    
+    const button = document.getElementById('initializeAI');
+    const originalText = button.innerHTML;
+    
+    try {
+      button.disabled = true;
+      button.innerHTML = `
+        <svg class="animate-spin w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        Cargando modelo...
+      `;
+      
+      const response = await fetch(`${API_BASE}/api/v1/categories/initialize-ai`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        alert('✅ Modelo de IA inicializado correctamente');
+      } else {
+        const error = await response.json();
+        alert(`Error: ${error.error || 'Error inicializando IA'}`);
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      alert('Error inicializando IA');
+    } finally {
+      button.disabled = false;
+      button.innerHTML = originalText;
+    }
+  }
+  
+  // Toggle manual form
+  function toggleManualForm() {
+    const container = document.getElementById('manualFormContainer');
+    const button = document.getElementById('toggleManualForm');
+    const icon = button.querySelector('svg');
+    
+    if (container.classList.contains('hidden')) {
+      container.classList.remove('hidden');
+      icon.style.transform = 'rotate(180deg)';
+    } else {
+      container.classList.add('hidden');
+      icon.style.transform = 'rotate(0deg)';
+    }
+  }
+  
   // Event listeners
   document.getElementById('addCategoryForm')?.addEventListener('submit', addCategory);
+  document.getElementById('autoCreateCategories')?.addEventListener('click', autoCreateCategories);
+  document.getElementById('recategorizeTweets')?.addEventListener('click', recategorizeTweets);
+  document.getElementById('initializeAI')?.addEventListener('click', initializeAI);
+  document.getElementById('toggleManualForm')?.addEventListener('click', toggleManualForm);
   
   // Initialize page
   document.addEventListener('DOMContentLoaded', async () => {

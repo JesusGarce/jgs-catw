@@ -2,6 +2,7 @@ import express from 'express';
 import { PrismaClient } from '@prisma/client';
 import { logger } from '../utils/logger.js';
 import { AppError } from '../middleware/errorHandler.js';
+import { getTweetCategories, saveTweetCategories, categorizeTweet, recategorizeSingleTweet } from '../services/categorizationService.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -75,13 +76,19 @@ router.get('/', async (req, res, next) => {
       prisma.tweet.count({ where })
     ]);
 
-    // Procesar resultados
-    const processedTweets = tweets.map(tweet => ({
-      ...tweet,
-      mediaUrls: tweet.mediaUrls ? JSON.parse(tweet.mediaUrls) : [],
-      hashtags: tweet.hashtags ? JSON.parse(tweet.hashtags) : [],
-      mentions: tweet.mentions ? JSON.parse(tweet.mentions) : []
-    }));
+    // Procesar resultados con categorías múltiples
+    const processedTweets = await Promise.all(
+      tweets.map(async tweet => {
+        const categories = await getTweetCategories(tweet.id);
+        return {
+          ...tweet,
+          mediaUrls: tweet.mediaUrls ? JSON.parse(tweet.mediaUrls) : [],
+          hashtags: tweet.hashtags ? JSON.parse(tweet.hashtags) : [],
+          mentions: tweet.mentions ? JSON.parse(tweet.mentions) : [],
+          categories: categories
+        };
+      })
+    );
 
     const totalPages = Math.ceil(total / take);
 
@@ -259,6 +266,86 @@ router.get('/categories/stats', async (req, res, next) => {
     }));
 
     res.json({ stats: formattedStats });
+
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * PUT /api/v1/tweets/:id/categories
+ * Actualizar categorías de un tweet específico
+ */
+router.put('/:id/categories', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { categories } = req.body;
+
+    if (!categories || !Array.isArray(categories)) {
+      throw new AppError('Se requiere un array de categorías', 400, 'INVALID_CATEGORIES');
+    }
+
+    // Verificar que el tweet existe y pertenece al usuario
+    const tweet = await prisma.tweet.findFirst({
+      where: {
+        id: parseInt(id),
+        userId: req.user.id
+      }
+    });
+
+    if (!tweet) {
+      throw new AppError('Tweet no encontrado', 404, 'TWEET_NOT_FOUND');
+    }
+
+    // Guardar las categorías
+    await saveTweetCategories(parseInt(id), categories, req.user.id);
+
+    // Obtener las categorías actualizadas
+    const updatedCategories = await getTweetCategories(parseInt(id));
+
+    logger.info('Categorías de tweet actualizadas:', {
+      userId: req.user.id,
+      tweetId: id,
+      categories: categories.map(cat => cat.category)
+    });
+
+    res.json({
+      success: true,
+      message: 'Categorías actualizadas exitosamente',
+      categories: updatedCategories
+    });
+
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/v1/tweets/:id/categorize
+ * Recategorizar un tweet específico usando IA
+ */
+router.post('/:id/categorize', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    // Usar la nueva función de recategorización individual
+    const result = await recategorizeSingleTweet(parseInt(id), req.user.id);
+
+    // Obtener las categorías actualizadas
+    const updatedCategories = await getTweetCategories(parseInt(id));
+
+    res.json({
+      success: true,
+      message: 'Tweet recategorizado exitosamente',
+      data: {
+        tweetId: result.tweetId,
+        oldCategory: result.oldCategory,
+        newCategory: result.newCategory,
+        confidence: result.confidence,
+        allCategories: result.allCategories
+      },
+      categories: updatedCategories
+    });
 
   } catch (error) {
     next(error);

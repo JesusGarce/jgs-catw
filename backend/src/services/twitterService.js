@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { PrismaClient } from '@prisma/client';
 import { logger, logTwitterAPI, logSync, logError } from '../utils/logger.js';
+import { categorizeTweet, saveTweetCategories } from './categorizationService.js';
 import { TwitterAPIError, AppError } from '../middleware/errorHandler.js';
 
 const prisma = new PrismaClient();
@@ -346,10 +347,35 @@ class TwitterService {
 
       } while (paginationToken);
 
-      // Guardar tweets en la base de datos
+      // Guardar tweets en la base de datos con categorización automática
       for (const tweetData of allTweets) {
         try {
-          await prisma.tweet.upsert({
+          // Categorizar el tweet automáticamente si no tiene categoría
+          let category = tweetData.category || 'General';
+          let categories = [];
+          
+          if (!tweetData.category && tweetData.content) {
+            try {
+              const categorizationResult = await categorizeTweet(tweetData.content, userId);
+              categories = categorizationResult.categories;
+              category = categories.find(cat => cat.isPrimary)?.category || categories[0]?.category || 'General';
+              logger.debug(`Tweet categorizado automáticamente: ${categories.map(cat => cat.category).join(', ')}`);
+            } catch (error) {
+              logger.warn('Error en categorización automática:', error.message);
+              // Continuar con categoría por defecto
+              categories = [{ category: 'General', confidence: 0.3, isPrimary: true }];
+            }
+          } else {
+            // Si ya tiene categoría, crear estructura para múltiples categorías
+            categories = [{ category, confidence: 0.8, isPrimary: true }];
+          }
+
+          const tweetToSave = {
+            ...tweetData,
+            category
+          };
+
+          const tweet = await prisma.tweet.upsert({
             where: { tweetId: tweetData.tweetId },
             update: {
               // Solo actualizar metadatos, no el contenido
@@ -357,8 +383,18 @@ class TwitterService {
               likeCount: tweetData.likeCount,
               replyCount: tweetData.replyCount
             },
-            create: tweetData
+            create: tweetToSave
           });
+
+          // Guardar categorías múltiples si es un tweet nuevo
+          if (categories.length > 0) {
+            try {
+              await saveTweetCategories(tweet.id, categories, userId);
+            } catch (error) {
+              logger.warn('Error guardando categorías múltiples:', error.message);
+            }
+          }
+
           newTweets++;
         } catch (error) {
           if (error.code === 'P2002') {
