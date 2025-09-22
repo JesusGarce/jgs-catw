@@ -15,7 +15,7 @@
 - **ORM:** Prisma (recomendado para tipado TypeScript)
 - **Autenticación:** Passport.js con estrategia OAuth 2.0
 - **Scheduler:** node-cron para tareas programadas
-- **IA/ML:** @xenova/transformers (Transformers.js)
+- **IA/ML:** @huggingface/transformers (Transformers.js)
 
 ### Frontend
 - **Framework:** Astro 4.0

@@ -22,7 +22,15 @@ import Layout from '../layouts/Layout.astro';
           </div>
           <div class="ml-4">
             <p class="text-sm font-medium text-gray-500">Total Tweets</p>
-            <p class="text-2xl font-semibold text-gray-900" id="totalTweets">-</p>
+            <p class="text-2xl font-semibold text-gray-900" id="totalTweets">
+              <span class="loading-spinner" id="totalTweetsSpinner" style="display: none;">
+                <svg class="animate-spin h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              </span>
+              <span id="totalTweetsValue">-</span>
+            </p>
           </div>
         </div>
       </div>
@@ -37,7 +45,15 @@ import Layout from '../layouts/Layout.astro';
           </div>
           <div class="ml-4">
             <p class="text-sm font-medium text-gray-500">Categorías</p>
-            <p class="text-2xl font-semibold text-gray-900" id="totalCategories">-</p>
+            <p class="text-2xl font-semibold text-gray-900" id="totalCategories">
+              <span class="loading-spinner" id="totalCategoriesSpinner" style="display: none;">
+                <svg class="animate-spin h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              </span>
+              <span id="totalCategoriesValue">-</span>
+            </p>
           </div>
         </div>
       </div>
@@ -52,7 +68,15 @@ import Layout from '../layouts/Layout.astro';
           </div>
           <div class="ml-4">
             <p class="text-sm font-medium text-gray-500">Última Sincronización</p>
-            <p class="text-2xl font-semibold text-gray-900" id="lastSync">-</p>
+            <p class="text-2xl font-semibold text-gray-900" id="lastSync">
+              <span class="loading-spinner" id="lastSyncSpinner" style="display: none;">
+                <svg class="animate-spin h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              </span>
+              <span id="lastSyncValue">-</span>
+            </p>
           </div>
         </div>
       </div>
@@ -66,8 +90,16 @@ import Layout from '../layouts/Layout.astro';
             </svg>
           </div>
           <div class="ml-4">
-            <p class="text-sm font-medium text-gray-500">Tweets Nuevos</p>
-            <p class="text-2xl font-semibold text-gray-900" id="newTweets">-</p>
+            <p class="text-sm font-medium text-gray-500">Tweets Esta Semana</p>
+            <p class="text-2xl font-semibold text-gray-900" id="newTweets">
+              <span class="loading-spinner" id="newTweetsSpinner" style="display: none;">
+                <svg class="animate-spin h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              </span>
+              <span id="newTweetsValue">-</span>
+            </p>
           </div>
         </div>
       </div>
@@ -130,7 +162,8 @@ import Layout from '../layouts/Layout.astro';
       const token = localStorage.getItem('authToken');
       if (!token) {
         // Show login button
-        document.getElementById('loginBtn').style.display = 'block';
+        const loginBtn = document.getElementById('loginBtn') as HTMLElement;
+        if (loginBtn) loginBtn.style.display = 'block';
         return false;
       }
       
@@ -142,11 +175,13 @@ import Layout from '../layouts/Layout.astro';
       });
       
       if (response.ok) {
-        document.getElementById('loginBtn').style.display = 'none';
+        const loginBtn = document.getElementById('loginBtn') as HTMLElement;
+        if (loginBtn) loginBtn.style.display = 'none';
         return true;
       } else {
         localStorage.removeItem('authToken');
-        document.getElementById('loginBtn').style.display = 'block';
+        const loginBtn = document.getElementById('loginBtn') as HTMLElement;
+        if (loginBtn) loginBtn.style.display = 'block';
         return false;
       }
     } catch (error) {
@@ -155,10 +190,49 @@ import Layout from '../layouts/Layout.astro';
     }
   }
   
+  // Show loading state for stats
+  function showStatsLoading() {
+    const totalTweetsSpinner = document.getElementById('totalTweetsSpinner') as HTMLElement;
+    const totalCategoriesSpinner = document.getElementById('totalCategoriesSpinner') as HTMLElement;
+    const lastSyncSpinner = document.getElementById('lastSyncSpinner') as HTMLElement;
+    const newTweetsSpinner = document.getElementById('newTweetsSpinner') as HTMLElement;
+    
+    const totalTweetsValue = document.getElementById('totalTweetsValue') as HTMLElement;
+    const totalCategoriesValue = document.getElementById('totalCategoriesValue') as HTMLElement;
+    const lastSyncValue = document.getElementById('lastSyncValue') as HTMLElement;
+    const newTweetsValue = document.getElementById('newTweetsValue') as HTMLElement;
+    
+    if (totalTweetsSpinner) totalTweetsSpinner.style.display = 'inline-block';
+    if (totalCategoriesSpinner) totalCategoriesSpinner.style.display = 'inline-block';
+    if (lastSyncSpinner) lastSyncSpinner.style.display = 'inline-block';
+    if (newTweetsSpinner) newTweetsSpinner.style.display = 'inline-block';
+    
+    if (totalTweetsValue) totalTweetsValue.textContent = '';
+    if (totalCategoriesValue) totalCategoriesValue.textContent = '';
+    if (lastSyncValue) lastSyncValue.textContent = '';
+    if (newTweetsValue) newTweetsValue.textContent = '';
+  }
+  
+  // Hide loading state for stats
+  function hideStatsLoading() {
+    const totalTweetsSpinner = document.getElementById('totalTweetsSpinner') as HTMLElement;
+    const totalCategoriesSpinner = document.getElementById('totalCategoriesSpinner') as HTMLElement;
+    const lastSyncSpinner = document.getElementById('lastSyncSpinner') as HTMLElement;
+    const newTweetsSpinner = document.getElementById('newTweetsSpinner') as HTMLElement;
+    
+    if (totalTweetsSpinner) totalTweetsSpinner.style.display = 'none';
+    if (totalCategoriesSpinner) totalCategoriesSpinner.style.display = 'none';
+    if (lastSyncSpinner) lastSyncSpinner.style.display = 'none';
+    if (newTweetsSpinner) newTweetsSpinner.style.display = 'none';
+  }
+
   // Load dashboard data
   async function loadDashboardData() {
     const token = localStorage.getItem('authToken');
     if (!token) return;
+    
+    // Show loading state
+    showStatsLoading();
     
     try {
       // Load stats
@@ -169,15 +243,56 @@ import Layout from '../layouts/Layout.astro';
       });
       
       if (statsResponse.ok) {
-        const stats = await statsResponse.json();
-        document.getElementById('totalTweets').textContent = stats.totalTweets || 0;
-        document.getElementById('totalCategories').textContent = stats.totalCategories || 0;
-        document.getElementById('newTweets').textContent = stats.newTweets || 0;
-        document.getElementById('lastSync').textContent = stats.lastSync ? new Date(stats.lastSync).toLocaleDateString() : 'Nunca';
+        const statsData = await statsResponse.json();
+        const stats = statsData.basic; // Acceder a la estructura correcta
+        
+        // Hide loading and show data
+        hideStatsLoading();
+        
+        const totalTweetsValue = document.getElementById('totalTweetsValue') as HTMLElement;
+        const totalCategoriesValue = document.getElementById('totalCategoriesValue') as HTMLElement;
+        const newTweetsValue = document.getElementById('newTweetsValue') as HTMLElement;
+        const lastSyncValue = document.getElementById('lastSyncValue') as HTMLElement;
+        
+        if (totalTweetsValue) totalTweetsValue.textContent = (stats.totalTweets || 0).toString();
+        if (totalCategoriesValue) totalCategoriesValue.textContent = (stats.totalCategories || 0).toString();
+        
+        // Calcular tweets nuevos de la última semana
+        if (newTweetsValue) newTweetsValue.textContent = (stats.tweetsThisWeek || 0).toString();
+        
+        // Mostrar última sincronización
+        if (stats.lastSync) {
+          const lastSyncDate = new Date(stats.lastSync);
+          const now = new Date();
+          const diffInHours = Math.floor((now.getTime() - lastSyncDate.getTime()) / (1000 * 60 * 60));
+          
+          if (diffInHours < 1) {
+            if (lastSyncValue) lastSyncValue.textContent = 'Hace menos de 1 hora';
+          } else if (diffInHours < 24) {
+            if (lastSyncValue) lastSyncValue.textContent = `Hace ${diffInHours} horas`;
+          } else {
+            const diffInDays = Math.floor(diffInHours / 24);
+            if (lastSyncValue) lastSyncValue.textContent = `Hace ${diffInDays} días`;
+          }
+        } else {
+          if (lastSyncValue) lastSyncValue.textContent = 'Nunca';
+        }
+      } else {
+        hideStatsLoading();
+        // Mostrar mensaje de error en las estadísticas
+        const totalTweetsValue = document.getElementById('totalTweetsValue') as HTMLElement;
+        const totalCategoriesValue = document.getElementById('totalCategoriesValue') as HTMLElement;
+        const newTweetsValue = document.getElementById('newTweetsValue') as HTMLElement;
+        const lastSyncValue = document.getElementById('lastSyncValue') as HTMLElement;
+        
+        if (totalTweetsValue) totalTweetsValue.textContent = 'Error';
+        if (totalCategoriesValue) totalCategoriesValue.textContent = 'Error';
+        if (newTweetsValue) newTweetsValue.textContent = 'Error';
+        if (lastSyncValue) lastSyncValue.textContent = 'Error';
       }
       
       // Load recent tweets
-      const tweetsResponse = await fetch(`${API_BASE}/api/v1/tweets?limit=5`, {
+      const tweetsResponse = await fetch(`${API_BASE}/api/v1/tweets?limit=5&sortBy=bookmarkedAt&sortOrder=desc`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -189,12 +304,24 @@ import Layout from '../layouts/Layout.astro';
       }
     } catch (error) {
       console.error('Error loading dashboard data:', error);
+      hideStatsLoading();
+      // Mostrar mensaje de error en las estadísticas
+      const totalTweetsValue = document.getElementById('totalTweetsValue') as HTMLElement;
+      const totalCategoriesValue = document.getElementById('totalCategoriesValue') as HTMLElement;
+      const newTweetsValue = document.getElementById('newTweetsValue') as HTMLElement;
+      const lastSyncValue = document.getElementById('lastSyncValue') as HTMLElement;
+      
+      if (totalTweetsValue) totalTweetsValue.textContent = 'Error';
+      if (totalCategoriesValue) totalCategoriesValue.textContent = 'Error';
+      if (newTweetsValue) newTweetsValue.textContent = 'Error';
+      if (lastSyncValue) lastSyncValue.textContent = 'Error';
     }
   }
   
   // Display recent tweets
-  function displayRecentTweets(tweets) {
+  function displayRecentTweets(tweets: any[]) {
     const container = document.getElementById('recentTweets');
+    if (!container) return;
     
     if (!tweets || tweets.length === 0) {
       container.innerHTML = `
@@ -203,35 +330,77 @@ import Layout from '../layouts/Layout.astro';
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
           </svg>
           <p class="mt-2 text-gray-500">No hay tweets para mostrar</p>
+          <p class="text-sm text-gray-400 mt-1">Usa la extensión para sincronizar tus tweets guardados</p>
         </div>
       `;
       return;
     }
     
-    container.innerHTML = tweets.map(tweet => `
-      <div class="border border-gray-200 rounded-lg p-4">
-        <div class="flex items-start space-x-3">
-          <div class="flex-shrink-0">
-            <div class="w-10 h-10 bg-twitter-600 rounded-full flex items-center justify-center">
-              <span class="text-white font-medium">${tweet.authorUsername.charAt(0).toUpperCase()}</span>
+    container.innerHTML = tweets.map((tweet: any) => {
+      // Formatear fecha relativa
+      const tweetDate = new Date(tweet.createdAtTwitter);
+      const now = new Date();
+      const diffInHours = Math.floor((now.getTime() - tweetDate.getTime()) / (1000 * 60 * 60));
+      let timeAgo;
+      
+      if (diffInHours < 1) {
+        timeAgo = 'Hace menos de 1 hora';
+      } else if (diffInHours < 24) {
+        timeAgo = `Hace ${diffInHours} horas`;
+      } else {
+        const diffInDays = Math.floor(diffInHours / 24);
+        timeAgo = `Hace ${diffInDays} días`;
+      }
+      
+      // Mostrar categorías si existen
+      const categoriesHtml = tweet.categories && tweet.categories.length > 0 
+        ? tweet.categories.map((cat: any) => 
+            `<span class="badge ${cat.isPrimary ? 'badge-primary' : 'badge-secondary'} mr-1" style="background-color: ${cat.color || '#6B7280'}; color: white;">
+              ${cat.name}
+              ${cat.confidence ? `<span class="text-xs opacity-75">(${Math.round(cat.confidence * 100)}%)</span>` : ''}
+            </span>`
+          ).join('')
+        : '<span class="badge badge-warning">Sin categoría</span>';
+      
+      return `
+        <div class="border border-gray-200 rounded-lg p-4 hover:shadow-sm transition-shadow">
+          <div class="flex items-start space-x-3">
+            <div class="flex-shrink-0">
+              <div class="w-10 h-10 bg-twitter-600 rounded-full flex items-center justify-center">
+                <span class="text-white font-medium">${tweet.authorUsername.charAt(0).toUpperCase()}</span>
+              </div>
             </div>
-          </div>
-          <div class="flex-1 min-w-0">
-            <div class="flex items-center space-x-2 mb-1">
-              <span class="text-sm font-medium text-gray-900">@${tweet.authorUsername}</span>
-              <span class="text-sm text-gray-500">${new Date(tweet.createdAtTwitter).toLocaleDateString()}</span>
-              ${tweet.category ? `<span class="badge badge-primary">${tweet.category}</span>` : ''}
-            </div>
-            <p class="text-sm text-gray-900">${tweet.content}</p>
-            <div class="flex items-center space-x-4 mt-2 text-sm text-gray-500">
-              <span>❤️ ${tweet.likeCount}</span>
-              <span>🔄 ${tweet.retweetCount}</span>
-              <span>💬 ${tweet.replyCount}</span>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center justify-between mb-1">
+                <div class="flex items-center space-x-2">
+                  <span class="text-sm font-medium text-gray-900">@${tweet.authorUsername}</span>
+                  <span class="text-sm text-gray-500">${timeAgo}</span>
+                </div>
+                <a href="https://twitter.com/${tweet.authorUsername}/status/${tweet.tweetId}" target="_blank" class="text-gray-400 hover:text-gray-600">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+                  </svg>
+                </a>
+              </div>
+              <div class="mb-2">
+                ${categoriesHtml}
+              </div>
+              <p class="text-sm text-gray-900 mb-2">${tweet.content}</p>
+              <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-4 text-sm text-gray-500">
+                  <span>❤️ ${tweet.likeCount || 0}</span>
+                  <span>🔄 ${tweet.retweetCount || 0}</span>
+                  <span>💬 ${tweet.replyCount || 0}</span>
+                </div>
+                <div class="text-xs text-gray-400">
+                  Guardado: ${new Date(tweet.bookmarkedAt).toLocaleDateString()}
+                </div>
+              </div>
             </div>
           </div>
         </div>
-      </div>
-    `).join('');
+      `;
+    }).join('');
   }
   
   // Sync functionality removed - now using Chrome extension

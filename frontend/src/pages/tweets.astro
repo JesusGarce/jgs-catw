@@ -10,6 +10,42 @@ import Layout from '../layouts/Layout.astro';
       <p class="mt-2 text-gray-600">Explora y organiza todos tus tweets guardados.</p>
     </div>
 
+    <!-- AI Categorization Controls -->
+    <div class="card mb-6">
+      <h3 class="text-lg font-medium text-gray-900 mb-4">🤖 Categorización Automática con IA</h3>
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div>
+          <button id="categorizeUncategorized" class="btn-primary w-full">
+            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            Categorizar Sin Categoría
+          </button>
+          <p class="text-xs text-gray-500 mt-1">Categoriza solo tweets sin categoría</p>
+        </div>
+        
+        <div>
+          <button id="recategorizeTweets" class="btn-secondary w-full">
+            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+            </svg>
+            Recategorizar Todos
+          </button>
+          <p class="text-xs text-gray-500 mt-1">Reclasifica todos tus tweets con IA</p>
+        </div>
+        
+        <div>
+          <button id="initializeAI" class="btn-outline w-full">
+            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+            </svg>
+            Inicializar IA
+          </button>
+          <p class="text-xs text-gray-500 mt-1">Cargar modelo de IA para categorización</p>
+        </div>
+      </div>
+    </div>
+
     <!-- Filters and Search -->
     <div class="card mb-6">
       <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -150,15 +186,17 @@ import Layout from '../layouts/Layout.astro';
         const data = await response.json();
         categories = data.categories || [];
         
-        const categorySelect = document.getElementById('category');
-        categorySelect.innerHTML = '<option value="">Todas las categorías</option>';
-        
-        categories.forEach(category => {
-          const option = document.createElement('option');
-          option.value = category.name;
-          option.textContent = category.name;
-          categorySelect.appendChild(option);
-        });
+        const categorySelect = document.getElementById('category') as HTMLSelectElement;
+        if (categorySelect) {
+          categorySelect.innerHTML = '<option value="">Todas las categorías</option>';
+          
+          categories.forEach((category: any) => {
+            const option = document.createElement('option');
+            option.value = category.name;
+            option.textContent = category.name;
+            categorySelect.appendChild(option);
+          });
+        }
       }
     } catch (error) {
       console.error('Error loading categories:', error);
@@ -233,7 +271,7 @@ import Layout from '../layouts/Layout.astro';
   }
   
   // Display tweets
-  function displayTweets(tweets) {
+  function displayTweets(tweets: any[]) {
     const container = document.getElementById('tweetsContainer');
     
     if (!container) return;
@@ -250,7 +288,7 @@ import Layout from '../layouts/Layout.astro';
       return;
     }
     
-    container.innerHTML = tweets.map(tweet => `
+    container.innerHTML = tweets.map((tweet: any) => `
       <div class="card hover:shadow-md transition-shadow">
         <div class="flex items-start space-x-4">
           <div class="flex-shrink-0">
@@ -265,7 +303,7 @@ import Layout from '../layouts/Layout.astro';
                 <span class="text-sm font-medium text-gray-900">${tweet.authorUsername}</span>
                 <span class="text-sm text-gray-500">${new Date(tweet.createdAtTwitter).toLocaleDateString()}</span>
                 ${tweet.categories && tweet.categories.length > 0 ? 
-                  tweet.categories.map(cat => 
+                  tweet.categories.map((cat: any) => 
                     `<span class="badge ${cat.isPrimary ? 'badge-primary' : 'badge-secondary'} mr-1" style="background-color: ${cat.color || '#6B7280'}; color: white;">
                       ${cat.name}
                       ${cat.confidence ? `<span class="text-xs opacity-75">(${Math.round(cat.confidence * 100)}%)</span>` : ''}
@@ -314,7 +352,7 @@ import Layout from '../layouts/Layout.astro';
   }
   
   // Update pagination
-  function updatePagination(pagination) {
+  function updatePagination(pagination: any) {
     currentPage = pagination.currentPage;
     totalPages = pagination.totalPages;
     totalTweets = pagination.totalItems;
@@ -351,7 +389,7 @@ import Layout from '../layouts/Layout.astro';
       
       if (response.ok) {
         const data = await response.json();
-        alert(`✅ Tweet recategorizado!\n\nCategorías asignadas:\n${data.categories.map(cat => `• ${cat.name} (${Math.round(cat.confidence * 100)}%)`).join('\n')}`);
+        alert(`✅ Tweet recategorizado!\n\nCategorías asignadas:\n${data.categories.map((cat: any) => `• ${cat.name} (${Math.round(cat.confidence * 100)}%)`).join('\n')}`);
         loadTweets(); // Reload tweets
       } else {
         const error = await response.json();
@@ -398,12 +436,157 @@ import Layout from '../layouts/Layout.astro';
       alert('Error actualizando categoría');
     }
   }
+
+  // Categorize only uncategorized tweets
+  async function categorizeUncategorized() {
+    const token = localStorage.getItem('authToken');
+    if (!token) return;
+    
+    if (!confirm('¿Categorizar solo los tweets que aún no tienen categoría asignada?')) {
+      return;
+    }
+    
+    const button = document.getElementById('categorizeUncategorized') as HTMLButtonElement;
+    if (!button) return;
+    
+    const originalText = button.innerHTML;
+    
+    try {
+      button.disabled = true;
+      button.innerHTML = `
+        <svg class="animate-spin w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        Categorizando...
+      `;
+      
+      const response = await fetch(`${API_BASE}/api/v1/categories/categorize-uncategorized`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        alert(`✅ Categorización completada!\n\n📊 Resultados:\n• Tweets sin categoría encontrados: ${data.result.found}\n• Tweets categorizados: ${data.result.categorized}\n• Tweets procesados: ${data.result.processed}`);
+        loadTweets(); // Reload tweets
+      } else {
+        const error = await response.json();
+        alert(`Error: ${error.error || 'Error en categorización'}`);
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      alert('Error en categorización');
+    } finally {
+      button.disabled = false;
+      button.innerHTML = originalText;
+    }
+  }
+
+  // Recategorize all tweets
+  async function recategorizeTweets() {
+    const token = localStorage.getItem('authToken');
+    if (!token) return;
+    
+    if (!confirm('¿Estás seguro de que quieres recategorizar todos tus tweets? Esto puede tomar varios minutos.')) {
+      return;
+    }
+    
+    const button = document.getElementById('recategorizeTweets') as HTMLButtonElement;
+    if (!button) return;
+    
+    const originalText = button.innerHTML;
+    
+    try {
+      button.disabled = true;
+      button.innerHTML = `
+        <svg class="animate-spin w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        Recategorizando...
+      `;
+      
+      const response = await fetch(`${API_BASE}/api/v1/categories/recategorize`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        alert(`✅ Recategorización completada!\n\n📊 Resultados:\n• Tweets procesados: ${data.result.processed}\n• Tweets actualizados: ${data.result.updated}`);
+        loadTweets(); // Reload tweets
+      } else {
+        const error = await response.json();
+        alert(`Error: ${error.error || 'Error en recategorización'}`);
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      alert('Error en recategorización');
+    } finally {
+      button.disabled = false;
+      button.innerHTML = originalText;
+    }
+  }
+  
+  // Initialize AI model
+  async function initializeAI() {
+    const token = localStorage.getItem('authToken');
+    if (!token) return;
+    
+    const button = document.getElementById('initializeAI') as HTMLButtonElement;
+    if (!button) return;
+    
+    const originalText = button.innerHTML;
+    
+    try {
+      button.disabled = true;
+      button.innerHTML = `
+        <svg class="animate-spin w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        Cargando modelo...
+      `;
+      
+      const response = await fetch(`${API_BASE}/api/v1/categories/initialize-ai`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        alert('✅ Modelo de IA inicializado correctamente');
+      } else {
+        const error = await response.json();
+        alert(`Error: ${error.error || 'Error inicializando IA'}`);
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      alert('Error inicializando IA');
+    } finally {
+      button.disabled = false;
+      button.innerHTML = originalText;
+    }
+  }
   
   // Event listeners
   document.getElementById('applyFilters')?.addEventListener('click', () => {
     currentPage = 1;
     loadTweets();
   });
+  
+  document.getElementById('categorizeUncategorized')?.addEventListener('click', categorizeUncategorized);
+  document.getElementById('recategorizeTweets')?.addEventListener('click', recategorizeTweets);
+  document.getElementById('initializeAI')?.addEventListener('click', initializeAI);
   
   document.getElementById('prevPage')?.addEventListener('click', () => {
     if (currentPage > 1) {

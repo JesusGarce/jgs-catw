@@ -4,6 +4,7 @@ import { logger, logTwitterAPI, logSync, logError } from '../utils/logger.js';
 import { categorizeTweet, saveTweetCategories } from './categorizationService.js';
 import { TwitterAPIError, AppError } from '../middleware/errorHandler.js';
 
+// Instancia singleton de Prisma
 const prisma = new PrismaClient();
 
 class TwitterService {
@@ -290,178 +291,202 @@ class TwitterService {
     const startTime = Date.now();
     let totalTweets = 0;
     let newTweets = 0;
-    let paginationToken = null;
-    let allTweets = [];
-    let syncLog = null; // Declarar syncLog fuera del try para que esté disponible en el catch
+    let syncLog = null;
 
     try {
-      // Obtener usuario y su token
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { id: true, accessToken: true, username: true }
-      });
+      // Obtener usuario y crear log de sincronización
+      const user = await this.getUserForSync(userId);
+      syncLog = await this.createSyncLog(userId);
 
-      if (!user || !user.accessToken) {
-        throw new AppError('Usuario no encontrado o sin token de acceso', 404);
-      }
+      // Obtener todos los bookmarks
+      const allTweets = await this.fetchAllBookmarks(user.accessToken, userId);
+      totalTweets = allTweets.length;
 
-      logSync(userId, 'SYNC_START', { username: user.username });
+      // Procesar y guardar tweets
+      newTweets = await this.processAndSaveTweets(allTweets, userId);
 
-      // Crear log de sincronización
-      syncLog = await prisma.syncLog.create({
-        data: {
-          userId,
-          status: 'running',
-          startedAt: new Date()
-        }
-      });
-
-      console.log('syncLog', syncLog);
-
-      // Obtener todos los bookmarks con paginación
-      do {
-        const result = await this.getBookmarks(
-          user.accessToken,
-          userId,
-          paginationToken,
-          25 // Lotes muy pequeños para evitar rate limits
-        );
-
-        allTweets = allTweets.concat(result.tweets);
-        totalTweets += result.resultCount;
-        paginationToken = result.nextToken;
-
-        logSync(userId, 'SYNC_BATCH', {
-          batchSize: result.resultCount,
-          totalSoFar: allTweets.length,
-          hasNext: !!paginationToken
-        });
-
-        // Pausa más larga entre requests para evitar rate limits
-        if (paginationToken) {
-          logSync(userId, 'SYNC_PAUSE', {
-            message: `Esperando ${this.rateLimitDelay}ms antes del siguiente lote...`
-          });
-          await new Promise(resolve => setTimeout(resolve, this.rateLimitDelay));
-        }
-
-      } while (paginationToken);
-
-      // Guardar tweets en la base de datos con categorización automática
-      for (const tweetData of allTweets) {
-        try {
-          // Categorizar el tweet automáticamente si no tiene categoría
-          let category = tweetData.category || 'General';
-          let categories = [];
-          
-          if (!tweetData.category && tweetData.content) {
-            try {
-              const categorizationResult = await categorizeTweet(tweetData.content, userId);
-              categories = categorizationResult.categories;
-              category = categories.find(cat => cat.isPrimary)?.category || categories[0]?.category || 'General';
-              logger.debug(`Tweet categorizado automáticamente: ${categories.map(cat => cat.category).join(', ')}`);
-            } catch (error) {
-              logger.warn('Error en categorización automática:', error.message);
-              // Continuar con categoría por defecto
-              categories = [{ category: 'General', confidence: 0.3, isPrimary: true }];
-            }
-          } else {
-            // Si ya tiene categoría, crear estructura para múltiples categorías
-            categories = [{ category, confidence: 0.8, isPrimary: true }];
-          }
-
-          const tweetToSave = {
-            ...tweetData,
-            category
-          };
-
-          const tweet = await prisma.tweet.upsert({
-            where: { tweetId: tweetData.tweetId },
-            update: {
-              // Solo actualizar metadatos, no el contenido
-              retweetCount: tweetData.retweetCount,
-              likeCount: tweetData.likeCount,
-              replyCount: tweetData.replyCount
-            },
-            create: tweetToSave
-          });
-
-          // Guardar categorías múltiples si es un tweet nuevo
-          if (categories.length > 0) {
-            try {
-              await saveTweetCategories(tweet.id, categories, userId);
-            } catch (error) {
-              logger.warn('Error guardando categorías múltiples:', error.message);
-            }
-          }
-
-          newTweets++;
-        } catch (error) {
-          if (error.code === 'P2002') {
-            // Tweet duplicado, continuar
-            continue;
-          }
-          throw error;
-        }
-      }
-
-      // Actualizar última sincronización del usuario
-      await prisma.user.update({
-        where: { id: userId },
-        data: { lastSync: new Date() }
-      });
-
-      // Completar log de sincronización
-      const duration = Date.now() - startTime;
-      await prisma.syncLog.update({
-        where: { id: syncLog.id },
-        data: {
-          status: 'success',
-          tweetsFound: totalTweets,
-          tweetsNew: newTweets,
-          duration,
-          completedAt: new Date()
-        }
-      });
-
-      logSync(userId, 'SYNC_COMPLETE', {
-        totalTweets,
-        newTweets,
-        duration: `${duration}ms`
-      });
+      // Completar sincronización
+      await this.completeSync(userId, syncLog.id, totalTweets, newTweets, startTime);
 
       return {
         success: true,
         totalTweets,
         newTweets,
-        duration
+        duration: Date.now() - startTime
       };
 
     } catch (error) {
-      const duration = Date.now() - startTime;
-      
-      // Log de error en la sincronización
-      if (syncLog) {
-        await prisma.syncLog.update({
-          where: { id: syncLog.id },
-          data: {
-            status: 'error',
-            error: error.message,
-            duration,
-            completedAt: new Date()
-          }
-        });
-      }
-
-      logSync(userId, 'SYNC_ERROR', {
-        error: error.message,
-        totalTweets,
-        newTweets,
-        duration: `${duration}ms`
-      });
-
+      await this.handleSyncError(syncLog, error, startTime);
       throw error;
     }
+  }
+
+  // Obtener usuario para sincronización
+  async getUserForSync(userId) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, accessToken: true, username: true }
+    });
+
+    if (!user || !user.accessToken) {
+      throw new AppError('Usuario no encontrado o sin token de acceso', 404);
+    }
+
+    logSync(userId, 'SYNC_START', { username: user.username });
+    return user;
+  }
+
+  // Crear log de sincronización
+  async createSyncLog(userId) {
+    return await prisma.syncLog.create({
+      data: {
+        userId,
+        status: 'running',
+        startedAt: new Date()
+      }
+    });
+  }
+
+  // Obtener todos los bookmarks con paginación
+  async fetchAllBookmarks(accessToken, userId) {
+    let allTweets = [];
+    let paginationToken = null;
+
+    do {
+      const result = await this.getBookmarks(accessToken, userId, paginationToken, 25);
+      
+      allTweets = allTweets.concat(result.tweets);
+      paginationToken = result.nextToken;
+
+      logSync(userId, 'SYNC_BATCH', {
+        batchSize: result.resultCount,
+        totalSoFar: allTweets.length,
+        hasNext: !!paginationToken
+      });
+
+      // Pausa entre requests para evitar rate limits
+      if (paginationToken) {
+        logSync(userId, 'SYNC_PAUSE', {
+          message: `Esperando ${this.rateLimitDelay}ms antes del siguiente lote...`
+        });
+        await new Promise(resolve => setTimeout(resolve, this.rateLimitDelay));
+      }
+    } while (paginationToken);
+
+    return allTweets;
+  }
+
+  // Procesar y guardar tweets con categorización
+  async processAndSaveTweets(tweets, userId) {
+    let newTweets = 0;
+
+    for (const tweetData of tweets) {
+      try {
+        const { tweet, categories } = await this.processTweetData(tweetData, userId);
+        
+        const savedTweet = await prisma.tweet.upsert({
+          where: { tweetId: tweetData.tweetId },
+          update: {
+            retweetCount: tweetData.retweetCount,
+            likeCount: tweetData.likeCount,
+            replyCount: tweetData.replyCount
+          },
+          create: tweet
+        });
+
+        // Guardar categorías múltiples
+        if (categories.length > 0) {
+          try {
+            await saveTweetCategories(savedTweet.id, categories, userId);
+          } catch (error) {
+            logger.warn('Error guardando categorías múltiples:', error.message);
+          }
+        }
+
+        newTweets++;
+      } catch (error) {
+        if (error.code === 'P2002') {
+          continue; // Tweet duplicado
+        }
+        throw error;
+      }
+    }
+
+    return newTweets;
+  }
+
+  // Procesar datos de un tweet individual
+  async processTweetData(tweetData, userId) {
+    let category = tweetData.category || 'General';
+    let categories = [];
+    
+    if (!tweetData.category && tweetData.content) {
+      try {
+        const categorizationResult = await categorizeTweet(tweetData.content, userId);
+        categories = categorizationResult.categories;
+        category = categories.find(cat => cat.isPrimary)?.category || categories[0]?.category || 'General';
+        logger.debug(`Tweet categorizado automáticamente: ${categories.map(cat => cat.category).join(', ')}`);
+      } catch (error) {
+        logger.warn('Error en categorización automática:', error.message);
+        categories = [{ category: 'General', confidence: 0.3, isPrimary: true }];
+      }
+    } else {
+      categories = [{ category, confidence: 0.8, isPrimary: true }];
+    }
+
+    return {
+      tweet: { ...tweetData, category },
+      categories
+    };
+  }
+
+  // Completar sincronización exitosa
+  async completeSync(userId, syncLogId, totalTweets, newTweets, startTime) {
+    const duration = Date.now() - startTime;
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { lastSync: new Date() }
+    });
+
+    await prisma.syncLog.update({
+      where: { id: syncLogId },
+      data: {
+        status: 'success',
+        tweetsFound: totalTweets,
+        tweetsNew: newTweets,
+        duration,
+        completedAt: new Date()
+      }
+    });
+
+    logSync(userId, 'SYNC_COMPLETE', {
+      totalTweets,
+      newTweets,
+      duration: `${duration}ms`
+    });
+  }
+
+  // Manejar errores de sincronización
+  async handleSyncError(syncLog, error, startTime) {
+    const duration = Date.now() - startTime;
+    
+    if (syncLog) {
+      await prisma.syncLog.update({
+        where: { id: syncLog.id },
+        data: {
+          status: 'error',
+          error: error.message,
+          duration,
+          completedAt: new Date()
+        }
+      });
+    }
+
+    logSync(syncLog?.userId, 'SYNC_ERROR', {
+      error: error.message,
+      duration: `${duration}ms`
+    });
   }
 
   // Obtener información del usuario actual de Twitter

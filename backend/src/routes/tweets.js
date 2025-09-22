@@ -7,6 +7,40 @@ import { getTweetCategories, saveTweetCategories, categorizeTweet, recategorizeS
 const router = express.Router();
 const prisma = new PrismaClient();
 
+// ────────────────────────────────
+// 🛠️ UTILIDADES Y HELPERS
+// ────────────────────────────────
+
+/**
+ * Verificar que el tweet pertenece al usuario
+ */
+async function verifyTweetOwnership(tweetId, userId) {
+  const tweet = await prisma.tweet.findFirst({
+    where: {
+      id: parseInt(tweetId),
+      userId
+    }
+  });
+
+  if (!tweet) {
+    throw new AppError('Tweet no encontrado', 404, 'TWEET_NOT_FOUND');
+  }
+
+  return tweet;
+}
+
+/**
+ * Procesar datos JSON de tweets
+ */
+function processTweetData(tweet) {
+  return {
+    ...tweet,
+    mediaUrls: tweet.mediaUrls ? JSON.parse(tweet.mediaUrls) : [],
+    hashtags: tweet.hashtags ? JSON.parse(tweet.hashtags) : [],
+    mentions: tweet.mentions ? JSON.parse(tweet.mentions) : []
+  };
+}
+
 /**
  * GET /api/v1/tweets
  * Obtener tweets del usuario con filtros y paginación
@@ -81,10 +115,7 @@ router.get('/', async (req, res, next) => {
       tweets.map(async tweet => {
         const categories = await getTweetCategories(tweet.id);
         return {
-          ...tweet,
-          mediaUrls: tweet.mediaUrls ? JSON.parse(tweet.mediaUrls) : [],
-          hashtags: tweet.hashtags ? JSON.parse(tweet.hashtags) : [],
-          mentions: tweet.mentions ? JSON.parse(tweet.mentions) : [],
+          ...processTweetData(tweet),
           categories: categories
         };
       })
@@ -115,25 +146,8 @@ router.get('/', async (req, res, next) => {
 router.get('/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
-
-    const tweet = await prisma.tweet.findFirst({
-      where: {
-        id: parseInt(id),
-        userId: req.user.id
-      }
-    });
-
-    if (!tweet) {
-      throw new AppError('Tweet no encontrado', 404, 'TWEET_NOT_FOUND');
-    }
-
-    // Procesar datos JSON
-    const processedTweet = {
-      ...tweet,
-      mediaUrls: tweet.mediaUrls ? JSON.parse(tweet.mediaUrls) : [],
-      hashtags: tweet.hashtags ? JSON.parse(tweet.hashtags) : [],
-      mentions: tweet.mentions ? JSON.parse(tweet.mentions) : []
-    };
+    const tweet = await verifyTweetOwnership(id, req.user.id);
+    const processedTweet = processTweetData(tweet);
 
     res.json({ tweet: processedTweet });
 
@@ -155,17 +169,7 @@ router.put('/:id/category', async (req, res, next) => {
       throw new AppError('Categoría requerida', 400, 'MISSING_CATEGORY');
     }
 
-    // Verificar que el tweet pertenece al usuario
-    const existingTweet = await prisma.tweet.findFirst({
-      where: {
-        id: parseInt(id),
-        userId: req.user.id
-      }
-    });
-
-    if (!existingTweet) {
-      throw new AppError('Tweet no encontrado', 404, 'TWEET_NOT_FOUND');
-    }
+    const existingTweet = await verifyTweetOwnership(id, req.user.id);
 
     // Verificar que la categoría existe para este usuario
     const categoryExists = await prisma.category.findFirst({
@@ -209,18 +213,7 @@ router.put('/:id/category', async (req, res, next) => {
 router.delete('/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
-
-    // Verificar que el tweet pertenece al usuario
-    const tweet = await prisma.tweet.findFirst({
-      where: {
-        id: parseInt(id),
-        userId: req.user.id
-      }
-    });
-
-    if (!tweet) {
-      throw new AppError('Tweet no encontrado', 404, 'TWEET_NOT_FOUND');
-    }
+    await verifyTweetOwnership(id, req.user.id);
 
     // Archivar en lugar de eliminar
     const archivedTweet = await prisma.tweet.update({
@@ -285,17 +278,7 @@ router.put('/:id/categories', async (req, res, next) => {
       throw new AppError('Se requiere un array de categorías', 400, 'INVALID_CATEGORIES');
     }
 
-    // Verificar que el tweet existe y pertenece al usuario
-    const tweet = await prisma.tweet.findFirst({
-      where: {
-        id: parseInt(id),
-        userId: req.user.id
-      }
-    });
-
-    if (!tweet) {
-      throw new AppError('Tweet no encontrado', 404, 'TWEET_NOT_FOUND');
-    }
+    await verifyTweetOwnership(id, req.user.id);
 
     // Guardar las categorías
     await saveTweetCategories(parseInt(id), categories, req.user.id);

@@ -6,11 +6,47 @@ import {
   createAutoCategories, 
   recategorizeAllTweets, 
   getSuggestedCategories,
-  initializeAI 
+  initializeAI,
+  categorizeUncategorizedTweets
 } from '../services/categorizationService.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
+
+// ────────────────────────────────
+// 🛠️ UTILIDADES Y HELPERS
+// ────────────────────────────────
+
+/**
+ * Verificar que la categoría pertenece al usuario
+ */
+async function verifyCategoryOwnership(categoryId, userId) {
+  const category = await prisma.category.findFirst({
+    where: {
+      id: parseInt(categoryId),
+      userId
+    }
+  });
+
+  if (!category) {
+    throw new AppError('Categoría no encontrada', 404, 'CATEGORY_NOT_FOUND');
+  }
+
+  return category;
+}
+
+/**
+ * Obtener conteo de tweets por categoría
+ */
+async function getCategoryTweetCount(categoryName, userId) {
+  return await prisma.tweet.count({
+    where: {
+      userId,
+      category: categoryName,
+      isArchived: false
+    }
+  });
+}
 
 /**
  * GET /api/v1/categories
@@ -23,17 +59,10 @@ router.get('/', async (req, res, next) => {
       orderBy: { sortOrder: 'asc' }
     });
 
-    // Obtener conteo de tweets por categoría manualmente
+    // Obtener conteo de tweets por categoría
     const categoriesWithCount = await Promise.all(
       categories.map(async (category) => {
-        const tweetCount = await prisma.tweet.count({
-          where: {
-            userId: req.user.id,
-            category: category.name,
-            isArchived: false
-          }
-        });
-
+        const tweetCount = await getCategoryTweetCount(category.name, req.user.id);
         return {
           ...category,
           tweetCount
@@ -120,17 +149,7 @@ router.put('/:id', async (req, res, next) => {
     const { id } = req.params;
     const { name, description, color, sortOrder } = req.body;
 
-    // Verificar que la categoría existe y pertenece al usuario
-    const existingCategory = await prisma.category.findFirst({
-      where: {
-        id: parseInt(id),
-        userId: req.user.id
-      }
-    });
-
-    if (!existingCategory) {
-      throw new AppError('Categoría no encontrada', 404, 'CATEGORY_NOT_FOUND');
-    }
+    const existingCategory = await verifyCategoryOwnership(id, req.user.id);
 
     // Si se está cambiando el nombre, verificar que no exista otra con el mismo nombre
     if (name && name.trim() !== existingCategory.name) {
@@ -181,13 +200,7 @@ router.put('/:id', async (req, res, next) => {
     }
 
     // Obtener conteo actualizado de tweets
-    const tweetCount = await prisma.tweet.count({
-      where: {
-        userId: req.user.id,
-        category: updatedCategory.name,
-        isArchived: false
-      }
-    });
+    const tweetCount = await getCategoryTweetCount(updatedCategory.name, req.user.id);
 
     logger.info('Category updated', {
       userId: req.user.id,
@@ -215,18 +228,7 @@ router.put('/:id', async (req, res, next) => {
 router.delete('/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
-
-    // Verificar que la categoría existe y pertenece al usuario
-    const category = await prisma.category.findFirst({
-      where: {
-        id: parseInt(id),
-        userId: req.user.id
-      }
-    });
-
-    if (!category) {
-      throw new AppError('Categoría no encontrada', 404, 'CATEGORY_NOT_FOUND');
-    }
+    const category = await verifyCategoryOwnership(id, req.user.id);
 
     // No permitir eliminar categoría por defecto
     if (category.isDefault) {
@@ -234,13 +236,7 @@ router.delete('/:id', async (req, res, next) => {
     }
 
     // Verificar si tiene tweets asociados
-    const tweetCount = await prisma.tweet.count({
-      where: {
-        userId: req.user.id,
-        category: category.name,
-        isArchived: false
-      }
-    });
+    const tweetCount = await getCategoryTweetCount(category.name, req.user.id);
 
     if (tweetCount > 0) {
       throw new AppError(
@@ -284,17 +280,7 @@ router.post('/:id/move-tweets', async (req, res, next) => {
       throw new AppError('Categoría destino requerida', 400, 'MISSING_TARGET_CATEGORY');
     }
 
-    // Verificar que la categoría origen existe
-    const sourceCategory = await prisma.category.findFirst({
-      where: {
-        id: parseInt(id),
-        userId: req.user.id
-      }
-    });
-
-    if (!sourceCategory) {
-      throw new AppError('Categoría origen no encontrada', 404, 'SOURCE_CATEGORY_NOT_FOUND');
-    }
+    const sourceCategory = await verifyCategoryOwnership(id, req.user.id);
 
     // Verificar que la categoría destino existe
     const targetCategory = await prisma.category.findFirst({
@@ -431,6 +417,36 @@ router.get('/suggestions', async (req, res, next) => {
     res.json({
       success: true,
       suggestions
+    });
+
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/v1/categories/categorize-uncategorized
+ * Categorizar solo tweets que no tienen categoría asignada
+ */
+router.post('/categorize-uncategorized', async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+
+    logger.info(`Iniciando categorización de tweets sin categoría para usuario ${userId}`);
+
+    const result = await categorizeUncategorizedTweets(userId);
+
+    logger.info('Categorización de tweets sin categoría completada:', {
+      userId,
+      found: result.found,
+      categorized: result.categorized,
+      processed: result.processed
+    });
+
+    res.json({
+      success: true,
+      message: 'Categorización de tweets sin categoría completada',
+      result
     });
 
   } catch (error) {

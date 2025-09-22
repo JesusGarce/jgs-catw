@@ -1,44 +1,114 @@
 import { logger, logError } from '../utils/logger.js';
+import { PrismaClient } from '@prisma/client';
 
 let transformersLoaded = false;
 var sentimentPipeline = null;
+
+// Instancia singleton de Prisma
+const prisma = new PrismaClient();
+
+// ────────────────────────────────
+// 🛠️ UTILIDADES Y HELPERS
+// ────────────────────────────────
+
+/**
+ * Ejecutar operación con Prisma con manejo de errores
+ */
+async function withPrisma(operation, context = '') {
+  try {
+    return await operation(prisma);
+  } catch (error) {
+    logError(error, { context });
+    throw error;
+  }
+}
+
+/**
+ * Crear categoría si no existe
+ */
+async function findOrCreateCategory(categoryName, userId, prisma) {
+  let category = await prisma.category.findFirst({
+    where: { userId, name: categoryName }
+  });
+
+  if (!category) {
+    const colors = ['#3B82F6', '#10B981', '#EF4444', '#F59E0B', '#8B5CF6', '#EC4899', '#6366F1', '#F97316'];
+    const randomColor = colors[Math.floor(Math.random() * colors.length)];
+
+    category = await prisma.category.create({
+      data: {
+        name: categoryName,
+        description: `Categoría generada automáticamente por IA`,
+        color: randomColor,
+        userId,
+        sortOrder: 1000,
+        isDefault: false
+      }
+    });
+  }
+
+  return category;
+}
+
+/**
+ * Verificar si la tabla TweetCategory existe
+ */
+async function checkTweetCategoryTableExists(prisma) {
+  try {
+    await prisma.tweetCategory.findFirst({ take: 1 });
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
 
 // Mapeo de categorías basado en palabras clave
 const CATEGORY_KEYWORDS = {
   'Frontend': [
     'html', 'css', 'javascript', 'typescript', 'react', 'angular', 'vue', 'svelte',
-    'nextjs', 'nuxt', 'tailwind', 'bootstrap', 'material ui', 'chakra ui', 'astro',
+    'nextjs', 'nuxt', 'remix', 'solidjs', 'astro', 'tailwind', 'bootstrap',
+    'material ui', 'chakra ui', 'shadcn', 'storybook',
     'frontend', 'ui', 'ux', 'design', 'responsive', 'components', 'web design'
   ],
 
   'Backend': [
-    'node', 'express', 'nest', 'django', 'flask', 'spring boot', 'ruby on rails',
-    'laravel', 'php', 'golang', 'java', 'dotnet', '.net', 'api', 'rest', 'graphql',
-    'microservices', 'server', 'backend', 'middleware', 'queue', 'worker'
+    'node', 'express', 'nest', 'deno', 'bun', 'django', 'flask', 'spring boot',
+    'ruby on rails', 'laravel', 'php', 'golang', 'java', 'dotnet', '.net',
+    'api', 'rest', 'graphql', 'microservices', 'server', 'backend', 'middleware',
+    'queue', 'worker', 'websocket'
   ],
 
   'Inteligencia Artificial y Machine Learning': [
-    'ai', 'machine learning', 'ml', 'deep learning', 'nlp', 'openai', 'chatgpt',
-    'llm', 'gpt', 'bert', 'transformer', 'stable diffusion', 'computer vision',
-    'generative ai', 'prompt engineering', 'neural network', 'tensorflow', 'pytorch'
+    'ai', 'inteligencia artificial', 'machine learning', 'ml', 'deep learning',
+    'nlp', 'openai', 'chatgpt', 'claude', 'llm', 'gpt', 'bert', 'transformer',
+    'stable diffusion', 'midjourney', 'computer vision', 'generative ai',
+    'prompt engineering', 'neural network', 'tensorflow', 'pytorch',
+    'keras', 'huggingface', 'vector db', 'embedding', 'rag',
+    'agentic ai', 'autonomous agent', 'langchain'
   ],
 
   'Ciberseguridad': [
-    'cybersecurity', 'hacking', 'pentesting', 'malware', 'ransomware', 'phishing',
-    'owasp', 'exploit', 'firewall', 'encryption', 'ssl', 'ddos', 'vpn', 'bug bounty',
-    'zeroday', 'osint', 'forensics', 'security', 'authentication', 'authorization'
+    'cybersecurity', 'hacking', 'ethical hacking', 'pentesting', 'red team',
+    'blue team', 'malware', 'ransomware', 'phishing', 'owasp', 'exploit',
+    'firewall', 'encryption', 'ssl', 'tls', 'ddos', 'vpn', 'bug bounty',
+    'zeroday', 'osint', 'forensics', 'infosec', 'ciberseguridad',
+    'security', 'authentication', 'authorization', 'xss', 'csrf', 'mitre'
   ],
 
   'DevOps y Cloud': [
-    'devops', 'cloud', 'aws', 'gcp', 'azure', 'docker', 'kubernetes', 'helm', 'terraform',
-    'ansible', 'ci/cd', 'jenkins', 'github actions', 'monitoring', 'grafana', 'prometheus',
-    'observability', 'logging', 'scalability', 'infrastructure', 'load balancing'
+    'devops', 'cloud', 'aws', 'gcp', 'azure', 'digitalocean', 'vercel', 'netlify',
+    'docker', 'kubernetes', 'helm', 'terraform', 'ansible', 'pulumi',
+    'ci/cd', 'jenkins', 'github actions', 'gitlab ci', 'argo',
+    'monitoring', 'grafana', 'prometheus', 'observability',
+    'logging', 'scalability', 'infrastructure', 'load balancing'
   ],
 
   'Bases de Datos': [
-    'database', 'sql', 'mysql', 'postgres', 'postgresql', 'mariadb', 'oracle', 'sqlserver',
-    'mongodb', 'nosql', 'redis', 'elasticsearch', 'cassandra', 'bigquery', 'firestore',
-    'prisma', 'typeorm', 'sequelize', 'data modeling', 'query', 'indexing', 'sharding'
+    'database', 'sql', 'mysql', 'postgres', 'postgresql', 'mariadb', 'oracle',
+    'sqlserver', 'mongodb', 'nosql', 'redis', 'elasticsearch', 'cassandra',
+    'bigquery', 'firestore', 'dynamodb', 'supabase', 'neon', 'cockroachdb',
+    'prisma', 'typeorm', 'sequelize', 'drizzle',
+    'data modeling', 'query', 'indexing', 'sharding', 'etl'
   ],
 
   'Programación General': [
@@ -62,30 +132,35 @@ const CATEGORY_KEYWORDS = {
   'Noticias y Tendencias Tecnológicas': [
     'release', 'update', 'breaking', 'announcement', 'trending', 'new version',
     'beta', 'alpha', 'launch', 'roadmap', 'rumors', 'patch', 'security update',
-    'stable', 'deprecated', 'support ended', 'feature', 'bugfix', 'performance'
+    'stable', 'deprecated', 'support ended', 'feature', 'bugfix', 'performance',
+    'changelog', 'rc', 'milestone'
   ],
   'Noticias Generales': [
-    'noticia', 'breaking', 'news', 'última hora', 'actualidad', 'informe',
-    'reportaje', 'report', 'announces', 'confirmed', 'official', 'press', 'statement'
+    'noticia', 'noticias', 'breaking', 'news', 'última hora', 'actualidad',
+    'informe', 'reportaje', 'report', 'announces', 'confirmed', 'official',
+    'press', 'statement', 'headline'
   ],
   'Política y Gobierno': [
     'política', 'gobierno', 'parlamento', 'elecciones', 'election', 'referéndum',
-    'presidente', 'ministro', 'ley', 'policy', 'senado', 'diputados', 'manifestación',
-    'protesta', 'congreso', 'campaña electoral'
+    'presidente', 'ministro', 'ley', 'policy', 'senado', 'diputados',
+    'manifestación', 'protesta', 'congreso', 'campaña electoral', 'gubernamental'
   ],
   'Economía y Mercados': [
-    'economía', 'mercados', 'bolsa', 'acciones', 'inflación', 'crisis', 'impuestos',
-    'banco central', 'intereses', 'mercado financiero', 'subida precios', 'crypto',
-    'bitcoin', 'nasdaq', 'dow jones', 'euribor', 'mercado', 'divisas', 'recesión'
+    'economía', 'mercados', 'bolsa', 'acciones', 'inflación', 'crisis',
+    'impuestos', 'banco central', 'intereses', 'mercado financiero',
+    'subida precios', 'crypto', 'bitcoin', 'ethereum', 'nasdaq', 'dow jones',
+    'euribor', 'mercado', 'divisas', 'recesión', 'fmi', 'fed'
   ],
   'Eventos y Sucesos': [
-    'evento', 'breaking news', 'tragedia', 'accidente', 'catástrofe', 'desastre',
-    'sismo', 'terremoto', 'huracán', 'alerta', 'incendio', 'suceso', 'urgente', 'emergencia'
+    'evento', 'breaking news', 'tragedia', 'accidente', 'catástrofe',
+    'desastre', 'sismo', 'terremoto', 'huracán', 'alerta', 'incendio',
+    'suceso', 'urgente', 'emergencia', 'tsunami', 'inundación', 'dana'
   ],
   'Ciencia y Salud': [
-    'salud', 'vacunas', 'pandemia', 'covid', 'investigación', 'ciencia', 'hospital',
-    'enfermedad', 'tratamiento', 'descubrimiento', 'virus', 'salud pública',
-    'oms', 'medicina', 'farmacéutica', 'biotecnología'
+    'salud', 'vacunas', 'pandemia', 'covid', 'investigación', 'ciencia',
+    'hospital', 'enfermedad', 'tratamiento', 'descubrimiento', 'virus',
+    'salud pública', 'oms', 'medicina', 'farmacéutica', 'biotecnología',
+    'genética', 'neurociencia'
   ],
 
   // ────────────────────────────────
@@ -107,77 +182,91 @@ const CATEGORY_KEYWORDS = {
     'investigación', 'research', 'paper', 'congreso científico', 'academic',
     'estudio', 'descubrimiento', 'tesis', 'proyecto universitario', 'publicación'
   ],
-
+  
   // ────────────────────────────────
-  // 💡 INSPIRACIÓN Y DESARROLLO PERSONAL
+  // 💡 DESARROLLO PERSONAL
   // ────────────────────────────────
   'Frases Motivacionales': [
-    'motivación', 'inspiración', 'cita', 'frase', 'quote', 'sabiduría', 'mindset',
-    'crecimiento personal', 'superación', 'perseverancia', 'determinación'
+    'motivación', 'inspiración', 'cita', 'frase', 'quote', 'sabiduría',
+    'mindset', 'crecimiento personal', 'superación', 'perseverancia',
+    'determinación', 'resiliencia'
   ],
   'Éxito y Productividad': [
     'productividad', 'éxito', 'disciplina', 'organización', 'planificación',
-    'eficiencia', 'gestión del tiempo', 'logro', 'objetivos', 'progreso'
+    'eficiencia', 'gestión del tiempo', 'logro', 'objetivos', 'progreso',
+    'time management', 'foco'
   ],
   'Desarrollo Personal': [
-    'crecimiento', 'autoestima', 'desarrollo personal', 'mentalidad', 'propósito',
-    'liderazgo', 'mental health', 'bienestar emocional', 'coaching'
+    'crecimiento', 'autoestima', 'desarrollo personal', 'mentalidad',
+    'propósito', 'liderazgo', 'mental health', 'bienestar emocional',
+    'coaching', 'psicología', 'mindfulness'
   ],
 
   // ────────────────────────────────
-  // 🎭 ENTRETENIMIENTO Y CULTURA POP
+  // 🎭 CULTURA POP
   // ────────────────────────────────
   'Cine y Series': [
-    'película', 'movie', 'film', 'serie', 'netflix', 'hbo', 'prime video', 'disney+',
-    'estreno', 'tráiler', 'spoiler', 'actor', 'actriz', 'director', 'oscar', 'premios'
+    'película', 'movie', 'film', 'serie', 'netflix', 'hbo', 'prime video',
+    'disney+', 'apple tv', 'estreno', 'tráiler', 'spoiler', 'actor',
+    'actriz', 'director', 'oscar', 'premios', 'festival cine'
   ],
   'Música y Conciertos': [
-    'música', 'spotify', 'concierto', 'álbum', 'single', 'canción', 'tour',
-    'festival', 'banda', 'dj', 'cantante', 'singer', 'billboard'
+    'música', 'spotify', 'apple music', 'tidal', 'concierto', 'álbum',
+    'single', 'canción', 'tour', 'festival', 'banda', 'dj', 'cantante',
+    'singer', 'billboard', 'grammy'
   ],
   'Gaming y Esports': [
-    'gaming', 'videojuegos', 'esports', 'twitch', 'streaming', 'steam', 'ps5',
-    'xbox', 'nintendo', 'league of legends', 'fortnite', 'valorant', 'csgo'
+    'gaming', 'videojuegos', 'esports', 'twitch', 'streaming', 'steam',
+    'ps5', 'xbox', 'nintendo', 'league of legends', 'fortnite', 'valorant',
+    'csgo', 'dota', 'roblox', 'minecraft'
   ],
   'Memes y Cultura Internet': [
-    'meme', 'funny', 'viral', 'trend', 'shitpost', 'parodia', 'tiktok',
-    'youtube', 'instagram', 'reels', 'humor', 'challenge'
+    'meme', 'memes', 'funny', 'viral', 'trend', 'shitpost', 'parodia',
+    'tiktok', 'youtube', 'instagram', 'reels', 'humor', 'challenge',
+    'threads', 'reddit'
   ],
 
   // ────────────────────────────────
-  // ⚽ DEPORTES Y FITNESS
+  // ⚽ DEPORTES
   // ────────────────────────────────
   'Fútbol': [
-    'fútbol', 'football', 'soccer', 'champions', 'laliga', 'premier league', 'liga mx',
-    'balón de oro', 'cristiano', 'messi', 'gol', 'penalti', 'var', 'entrenador'
+    'fútbol', 'football', 'soccer', 'champions', 'laliga', 'premier league',
+    'liga mx', 'balón de oro', 'cristiano', 'messi', 'gol', 'penalti', 'var',
+    'entrenador', 'mundial', 'uefa'
   ],
   'Baloncesto y Otros Deportes': [
-    'baloncesto', 'nba', 'basket', 'tenis', 'f1', 'motogp', 'rugby', 'boxeo',
-    'natación', 'voleibol', 'atletismo', 'olimpiadas'
+    'baloncesto', 'nba', 'basket', 'tenis', 'f1', 'formula 1', 'motogp',
+    'rugby', 'boxeo', 'natación', 'voleibol', 'atletismo', 'olimpiadas',
+    'wimbledon', 'super bowl'
   ],
   'Fitness y Salud': [
-    'gym', 'fitness', 'entrenamiento', 'workout', 'crossfit', 'rutina', 'dieta',
-    'nutrición', 'salud física', 'pesas', 'cardio'
+    'gym', 'fitness', 'entrenamiento', 'workout', 'crossfit', 'rutina',
+    'dieta', 'nutrición', 'salud física', 'pesas', 'cardio', 'wellness',
+    'personal trainer'
   ],
 
   // ────────────────────────────────
-  // 💼 NEGOCIOS Y FINANZAS
+  // 💼 NEGOCIOS
   // ────────────────────────────────
   'Negocios y Startups': [
-    'negocio', 'empresa', 'startup', 'emprendimiento', 'innovación', 'escala',
-    'fundador', 'inversores', 'modelo de negocio', 'pymes', 'saas'
+    'negocio', 'empresa', 'startup', 'emprendimiento', 'innovación',
+    'escala', 'fundador', 'inversores', 'modelo de negocio', 'pymes',
+    'saas', 'venture capital', 'growth'
   ],
   'Inversiones y Finanzas': [
-    'inversión', 'bolsa', 'acciones', 'criptomonedas', 'trading', 'broker', 'nasdaq',
-    'finanzas', 'deuda', 'fondos', 'patrimonio', 'divisas', 'mercado financiero'
+    'inversión', 'bolsa', 'acciones', 'criptomonedas', 'trading',
+    'broker', 'nasdaq', 'finanzas', 'deuda', 'fondos', 'patrimonio',
+    'divisas', 'mercado financiero', 'blockchain', 'tokenomics'
   ],
   'Marketing y Ventas': [
-    'marketing', 'publicidad', 'ventas', 'clientes', 'branding', 'posicionamiento',
-    'estrategia digital', 'seo', 'sem', 'community manager', 'campaña', 'crecimiento'
+    'marketing', 'publicidad', 'ventas', 'clientes', 'branding',
+    'posicionamiento', 'estrategia digital', 'seo', 'sem',
+    'community manager', 'campaña', 'crecimiento', 'influencer marketing'
   ],
   'Liderazgo y Gestión': [
-    'liderazgo', 'management', 'gestión de equipos', 'dirección', 'plan estratégico',
-    'reclutamiento', 'recursos humanos', 'coaching empresarial'
+    'liderazgo', 'management', 'gestión de equipos', 'dirección',
+    'plan estratégico', 'reclutamiento', 'recursos humanos',
+    'coaching empresarial', 'cultura organizacional', 'agile', 'scrum'
   ]
 };
 
@@ -194,25 +283,16 @@ export async function initializeAI() {
     logger.info('🤖 Inicializando modelo de categorización con Transformers.js...');
     
     // Cargar Transformers.js para clasificación de texto
-    const { pipeline } = await import('@xenova/transformers');
+    const { pipeline } = await import('@huggingface/transformers');
     
-    // Usar un modelo de análisis de sentimientos más estable
+    // Usar el modelo original con configuración mínima
     sentimentPipeline = await pipeline(
-      'sentiment-analysis',
-      'Xenova/distilbert-base-uncased-finetuned-sst-2-english',
-      {
-        // Configuración para optimizar rendimiento
-        quantized: true,
-        progress_callback: (progress) => {
-          if (progress.status === 'downloading') {
-            logger.info(`📥 Descargando modelo: ${Math.round(progress.progress * 100)}%`);
-          }
-        }
-      }
+      'zero-shot-classification',
+      'MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7',
     );
     
     transformersLoaded = true;
-    logger.info('✅ Modelo de categorización Transformers.js inicializado correctamente');
+    logger.info('✅ Modelo de análisis de sentimientos inicializado correctamente');
 
   } catch (error) {
     logError(error, { context: 'initialize_ai' });
@@ -232,21 +312,21 @@ export async function categorizeTweet(content, userId = null) {
 
     const normalizedContent = content.toLowerCase();
     
-    // Método 1: Categorización por palabras clave (múltiples)
-    const keywordResults = categorizeByKeywordsMultiple(normalizedContent);
+    // Método 1: Categorización por palabras clave
+    const keywordResults = categorizeByKeywords(normalizedContent);
     
     // Método 2: Si Transformers.js está disponible, usarlo
     let aiResults = [];
     if (transformersLoaded && sentimentPipeline) {
       try {
-        aiResults = await categorizeWithAIMultiple(content);
+        aiResults = await categorizeWithAI(content);
       } catch (error) {
         logger.warn('Error usando IA, fallback a keywords:', error.message);
       }
     }
 
     // Método 3: Análisis de contexto adicional
-    const contextResults = categorizeByContextMultiple(normalizedContent);
+    const contextResults = categorizeByContext(normalizedContent);
     
     // Combinar todos los resultados y eliminar duplicados
     const allResults = [...keywordResults, ...aiResults, ...contextResults];
@@ -266,9 +346,46 @@ export async function categorizeTweet(content, userId = null) {
 }
 
 /**
- * Categorización basada en palabras clave (múltiples categorías)
+ * Categorización usando IA (RoBERTuito)
  */
-function categorizeByKeywordsMultiple(content) {
+async function categorizeWithAI(content) {
+  try {
+    if (!sentimentPipeline) {
+      return [];
+    }
+
+    // Modelo de análisis de sentimientos - adaptamos para categorización
+    const result = await sentimentPipeline(content);
+    
+    // Mapear sentimientos a categorías más amplias
+    const sentimentToCategory = {
+      'POSITIVE': 'Contenido Positivo',
+      'NEGATIVE': 'Contenido Negativo'
+    };
+
+    const category = sentimentToCategory[result[0]?.label] || 'General';
+    const confidence = result[0]?.score || 0.5;
+
+    return [{
+      category,
+      confidence: Math.max(confidence, 0.3),
+      method: 'ai',
+      details: { 
+        originalLabel: result[0]?.label,
+        originalScore: result[0]?.score 
+      }
+    }];
+
+  } catch (error) {
+    logger.warn('Error en categorización con IA:', error.message);
+    return [];
+  }
+}
+
+/**
+ * Categorización basada en palabras clave
+ */
+function categorizeByKeywords(content) {
   const scores = {};
   let totalMatches = 0;
 
@@ -310,17 +427,9 @@ function categorizeByKeywordsMultiple(content) {
 }
 
 /**
- * Categorización basada en palabras clave (versión original para compatibilidad)
+ * Categorización por contexto
  */
-function categorizeByKeywords(content) {
-  const results = categorizeByKeywordsMultiple(content);
-  return results.length > 0 ? results[0] : { category: 'General', confidence: 0.3, method: 'keywords' };
-}
-
-/**
- * Categorización por contexto (múltiples categorías)
- */
-function categorizeByContextMultiple(content) {
+function categorizeByContext(content) {
   const indicators = {
     'Frontend': [
       'github.com', 'stackoverflow.com', 'dev.to', 'medium.com/@tech',
@@ -374,95 +483,6 @@ function categorizeByContextMultiple(content) {
   }
 
   return results;
-}
-
-/**
- * Categorización con IA usando Transformers.js (múltiples categorías)
- */
-async function categorizeWithAIMultiple(content) {
-  if (!sentimentPipeline) {
-    throw new Error('Modelo de IA no inicializado');
-  }
-
-  try {
-    // Limpiar y preparar el texto para el modelo
-    const cleanContent = content
-      .replace(/https?:\/\/[^\s]+/g, '') // Remover URLs
-      .replace(/@\w+/g, '') // Remover menciones
-      .replace(/#\w+/g, '') // Remover hashtags
-      .trim();
-
-    if (cleanContent.length < 10) {
-      return [{
-        category: 'General',
-        confidence: 0.3,
-        method: 'ai',
-        isPrimary: true,
-        details: { reason: 'contenido_muy_corto' }
-      }];
-    }
-
-    // Usar el modelo para análisis de sentimientos
-    const result = await sentimentPipeline(cleanContent);
-    
-    // El modelo de sentimiento nos da: NEGATIVE o POSITIVE
-    const sentiment = result[0];
-    const results = [];
-
-    // Combinar sentimiento con análisis de palabras clave para mejor categorización
-    const keywordResults = categorizeByKeywordsMultiple(content.toLowerCase());
-    
-    // Si las palabras clave tienen alta confianza, usarlas como base
-    if (keywordResults.length > 0 && keywordResults[0].confidence > 0.6) {
-      // Usar las categorías de keywords como base
-      results.push(...keywordResults.slice(0, 3)); // Máximo 3 categorías de keywords
-    } else {
-      // Usar sentimiento para categorizar
-      let sentimentCategory = 'General';
-      let sentimentConfidence = sentiment.score;
-
-      switch (sentiment.label) {
-        case 'POSITIVE': // Positivo
-          if (content.toLowerCase().includes('motivation') || content.toLowerCase().includes('success')) {
-            sentimentCategory = 'Frases Motivacionales';
-          } else if (content.toLowerCase().includes('learn') || content.toLowerCase().includes('education')) {
-            sentimentCategory = 'Cursos y Formación';
-          } else {
-            sentimentCategory = 'General';
-          }
-          break;
-        case 'NEGATIVE': // Negativo
-          sentimentCategory = 'Noticias Generales'; // Contenido negativo suele ser noticias
-          break;
-        default:
-          sentimentCategory = 'General';
-          break;
-      }
-
-      results.push({
-        category: sentimentCategory,
-        confidence: Math.min(sentimentConfidence, 0.9),
-        method: 'ai',
-        isPrimary: true,
-        details: {
-          sentiment: sentiment.label,
-          sentimentScore: sentiment.score,
-          model: 'distilbert-base-uncased-finetuned-sst-2-english'
-        }
-      });
-    }
-
-    // Marcar la primera como principal
-    if (results.length > 0) {
-      results[0].isPrimary = true;
-    }
-
-    return results;
-
-  } catch (error) {
-    logger.warn('Error en categorización con IA:', error.message);
-    throw error;
-  }
 }
 
 /**
@@ -724,10 +744,7 @@ export async function createAutoCategories(userId) {
  * Recategorizar un tweet individual usando IA
  */
 export async function recategorizeSingleTweet(tweetId, userId) {
-  const { PrismaClient } = await import('@prisma/client');
-  const prisma = new PrismaClient();
-
-  try {
+  return withPrisma(async (prisma) => {
     // Obtener el tweet específico
     const tweet = await prisma.tweet.findFirst({
       where: {
@@ -758,7 +775,7 @@ export async function recategorizeSingleTweet(tweetId, userId) {
       data: { category: primaryCategory.category }
     });
 
-    // Guardar todas las categorías del tweet (relación many-to-many)
+    // Guardar todas las categorías del tweet
     await saveTweetCategories(tweetId, result.categories, userId);
 
     // Actualizar conteos de categorías
@@ -779,23 +796,14 @@ export async function recategorizeSingleTweet(tweetId, userId) {
       confidence: primaryCategory.confidence,
       allCategories: result.categories
     };
-
-  } catch (error) {
-    logError(error, { context: 'recategorize_single_tweet', tweetId, userId });
-    throw error;
-  } finally {
-    await prisma.$disconnect();
-  }
+  }, 'recategorize_single_tweet');
 }
 
 /**
  * Recategorizar todos los tweets de un usuario usando IA
  */
 export async function recategorizeAllTweets(userId) {
-  const { PrismaClient } = await import('@prisma/client');
-  const prisma = new PrismaClient();
-
-  try {
+  return withPrisma(async (prisma) => {
     // Obtener todos los tweets del usuario
     const tweets = await prisma.tweet.findMany({
       where: {
@@ -825,16 +833,16 @@ export async function recategorizeAllTweets(userId) {
       // Obtener la categoría principal
       const primaryCategory = result.categories.find(cat => cat.isPrimary) || result.categories[0];
       
-              // Actualizar la categoría principal en el campo legacy
-              await prisma.tweet.update({
-                where: { id: result.tweetId },
-                data: { category: primaryCategory.category }
-              });
-              
-              // Guardar todas las categorías múltiples
-              await saveTweetCategories(result.tweetId, result.categories, userId);
-              
-              updatedCount++;
+      // Actualizar la categoría principal en el campo legacy
+      await prisma.tweet.update({
+        where: { id: result.tweetId },
+        data: { category: primaryCategory.category }
+      });
+      
+      // Guardar todas las categorías múltiples
+      await saveTweetCategories(result.tweetId, result.categories, userId);
+      
+      updatedCount++;
     }
 
     // Actualizar conteos de categorías
@@ -849,84 +857,82 @@ export async function recategorizeAllTweets(userId) {
       processed: tweets.length,
       updated: updatedCount
     };
+  }, 'recategorize_all_tweets');
+}
 
-  } catch (error) {
-    logError(error, { context: 'recategorize_all_tweets', userId });
-    throw error;
-  } finally {
-    await prisma.$disconnect();
+/**
+ * Guardar categorías de un tweet en la base de datos
+ */
+export async function saveTweetCategories(tweetId, categories, userId) {
+  return withPrisma(async (prisma) => {
+    const hasTweetCategoryTable = await checkTweetCategoryTableExists(prisma);
+    
+    if (hasTweetCategoryTable) {
+      // Usar la nueva tabla de relación many-to-many
+      await saveTweetCategoriesWithTable(tweetId, categories, userId, prisma);
+    } else {
+      // Fallback al campo legacy category
+      await saveTweetCategoriesLegacy(tweetId, categories, userId, prisma);
+    }
+
+    logger.info(`Categorías guardadas para tweet ${tweetId}:`, {
+      categories: categories.map(cat => `${cat.category} (${cat.confidence})`),
+      method: hasTweetCategoryTable ? 'table' : 'legacy'
+    });
+  }, 'save_tweet_categories');
+}
+
+/**
+ * Guardar categorías usando la tabla TweetCategory
+ */
+async function saveTweetCategoriesWithTable(tweetId, categories, userId, prisma) {
+  // Eliminar categorías existentes del tweet
+  await prisma.tweetCategory.deleteMany({
+    where: { tweetId }
+  });
+
+  // Guardar nuevas categorías
+  for (const cat of categories) {
+    const category = await findOrCreateCategory(cat.category, userId, prisma);
+
+    // Crear relación tweet-categoría
+    await prisma.tweetCategory.create({
+      data: {
+        tweetId,
+        categoryId: category.id,
+        confidence: cat.confidence,
+        isPrimary: cat.isPrimary || false
+      }
+    });
+  }
+
+  // Actualizar la categoría principal en el campo legacy del tweet
+  const primaryCategory = categories.find(cat => cat.isPrimary);
+  if (primaryCategory) {
+    await prisma.tweet.update({
+      where: { id: tweetId },
+      data: { category: primaryCategory.category }
+    });
   }
 }
 
 /**
- * Guardar categorías de un tweet en la base de datos (relación many-to-many)
+ * Guardar categorías usando el campo legacy (fallback)
  */
-export async function saveTweetCategories(tweetId, categories, userId) {
-  const { PrismaClient } = await import('@prisma/client');
-  const prisma = new PrismaClient();
+async function saveTweetCategoriesLegacy(tweetId, categories, userId, prisma) {
+  const primaryCategory = categories.find(cat => cat.isPrimary) || categories[0];
+  
+  if (primaryCategory) {
+    const category = await findOrCreateCategory(primaryCategory.category, userId, prisma);
 
-  try {
-    // Eliminar categorías existentes del tweet
-    await prisma.tweetCategory.deleteMany({
-      where: { tweetId }
-    });
-
-    // Guardar nuevas categorías
-    for (const cat of categories) {
-      // Buscar o crear la categoría
-      let category = await prisma.category.findFirst({
-        where: {
-          userId,
-          name: cat.category
-        }
-      });
-
-      if (!category) {
-        // Crear categoría si no existe
-        const colors = ['#3B82F6', '#10B981', '#EF4444', '#F59E0B', '#8B5CF6', '#EC4899', '#6366F1', '#F97316'];
-        const randomColor = colors[Math.floor(Math.random() * colors.length)];
-
-        category = await prisma.category.create({
-          data: {
-            name: cat.category,
-            description: `Categoría generada automáticamente por IA`,
-            color: randomColor,
-            userId,
-            sortOrder: 1000,
-            isDefault: false
-          }
-        });
+    // Actualizar solo la categoría principal en el campo legacy
+    await prisma.tweet.update({
+      where: { id: tweetId },
+      data: { 
+        category: primaryCategory.category,
+        confidenceScore: primaryCategory.confidence
       }
-
-      // Crear relación tweet-categoría
-      await prisma.tweetCategory.create({
-        data: {
-          tweetId,
-          categoryId: category.id,
-          confidence: cat.confidence,
-          isPrimary: cat.isPrimary || false
-        }
-      });
-    }
-
-    // Actualizar la categoría principal en el campo legacy del tweet
-    const primaryCategory = categories.find(cat => cat.isPrimary);
-    if (primaryCategory) {
-      await prisma.tweet.update({
-        where: { id: tweetId },
-        data: { category: primaryCategory.category }
-      });
-    }
-
-    logger.info(`Categorías guardadas para tweet ${tweetId}:`, {
-      categories: categories.map(cat => `${cat.category} (${cat.confidence})`)
     });
-
-  } catch (error) {
-    logError(error, { context: 'save_tweet_categories', tweetId, userId });
-    throw error;
-  } finally {
-    await prisma.$disconnect();
   }
 }
 
@@ -934,45 +940,76 @@ export async function saveTweetCategories(tweetId, categories, userId) {
  * Obtener categorías de un tweet desde la base de datos
  */
 export async function getTweetCategories(tweetId) {
-  const { PrismaClient } = await import('@prisma/client');
-  const prisma = new PrismaClient();
+  return withPrisma(async (prisma) => {
+    const hasTweetCategoryTable = await checkTweetCategoryTableExists(prisma);
+    
+    if (hasTweetCategoryTable) {
+      return await getTweetCategoriesWithTable(tweetId, prisma);
+    } else {
+      return await getTweetCategoriesLegacy(tweetId, prisma);
+    }
+  }, 'get_tweet_categories');
+}
 
-  try {
-    const tweetCategories = await prisma.tweetCategory.findMany({
-      where: { tweetId },
-      include: {
-        category: true
-      },
-      orderBy: [
-        { isPrimary: 'desc' },
-        { confidence: 'desc' }
-      ]
-    });
+/**
+ * Obtener categorías usando la tabla TweetCategory
+ */
+async function getTweetCategoriesWithTable(tweetId, prisma) {
+  const tweetCategories = await prisma.tweetCategory.findMany({
+    where: { tweetId },
+    include: { category: true },
+    orderBy: [
+      { isPrimary: 'desc' },
+      { confidence: 'desc' }
+    ]
+  });
 
-    return tweetCategories.map(tc => ({
-      id: tc.category.id,
-      name: tc.category.name,
-      color: tc.category.color,
-      confidence: tc.confidence,
-      isPrimary: tc.isPrimary
-    }));
+  return tweetCategories.map(tc => ({
+    id: tc.category.id,
+    name: tc.category.name,
+    color: tc.category.color,
+    confidence: tc.confidence,
+    isPrimary: tc.isPrimary
+  }));
+}
 
-  } catch (error) {
-    logError(error, { context: 'get_tweet_categories', tweetId });
+/**
+ * Obtener categorías usando el campo legacy (fallback)
+ */
+async function getTweetCategoriesLegacy(tweetId, prisma) {
+  const tweet = await prisma.tweet.findUnique({
+    where: { id: tweetId },
+    select: { category: true, confidenceScore: true }
+  });
+
+  if (!tweet || !tweet.category) {
     return [];
-  } finally {
-    await prisma.$disconnect();
   }
+
+  const category = await prisma.category.findFirst({
+    where: { name: tweet.category }
+  });
+
+  if (!category) {
+    return [];
+  }
+
+  return [{
+    id: category.id,
+    name: category.name,
+    color: category.color,
+    confidence: tweet.confidenceScore || 0.5,
+    isPrimary: true
+  }];
 }
 
 /**
  * Actualizar conteo de tweets por categoría
  */
 export async function updateCategoryTweetCounts(userId) {
-  const { PrismaClient } = await import('@prisma/client');
-  const prisma = new PrismaClient();
-
-  try {
+  return withPrisma(async (prisma) => {
+    const hasTweetCategoryTable = await checkTweetCategoryTableExists(prisma);
+    
     // Obtener todas las categorías del usuario
     const categories = await prisma.category.findMany({
       where: { userId }
@@ -980,14 +1017,24 @@ export async function updateCategoryTweetCounts(userId) {
 
     // Actualizar conteo para cada categoría
     for (const category of categories) {
-      const count = await prisma.tweetCategory.count({
-        where: {
-          categoryId: category.id,
-          tweet: {
+      let count = 0;
+      
+      if (hasTweetCategoryTable) {
+        count = await prisma.tweetCategory.count({
+          where: {
+            categoryId: category.id,
+            tweet: { isArchived: false }
+          }
+        });
+      } else {
+        count = await prisma.tweet.count({
+          where: {
+            category: category.name,
+            userId,
             isArchived: false
           }
-        }
-      });
+        });
+      }
 
       await prisma.category.update({
         where: { id: category.id },
@@ -995,14 +1042,94 @@ export async function updateCategoryTweetCounts(userId) {
       });
     }
 
-    logger.info(`Conteos de tweets actualizados para usuario ${userId}`);
+    logger.info(`Conteos de tweets actualizados para usuario ${userId}`, {
+      method: hasTweetCategoryTable ? 'table' : 'legacy'
+    });
+  }, 'update_category_tweet_counts');
+}
 
-  } catch (error) {
-    logError(error, { context: 'update_category_tweet_counts', userId });
-    throw error;
-  } finally {
-    await prisma.$disconnect();
-  }
+/**
+ * Categorizar solo tweets que no tienen categoría asignada
+ */
+export async function categorizeUncategorizedTweets(userId) {
+  return withPrisma(async (prisma) => {
+    // Obtener tweets sin categoría del usuario
+    const uncategorizedTweets = await prisma.tweet.findMany({
+      where: {
+        userId,
+        isArchived: false,
+        OR: [
+          { category: null },
+          { category: '' },
+          { category: 'General' }
+        ]
+      },
+      select: { id: true, content: true, category: true },
+      orderBy: { bookmarkedAt: 'desc' }
+    });
+
+    const found = uncategorizedTweets.length;
+    logger.info(`Encontrados ${found} tweets sin categoría para usuario ${userId}`);
+
+    if (found === 0) {
+      return { found: 0, categorized: 0, processed: 0 };
+    }
+
+    let categorized = 0;
+    let processed = 0;
+
+    // Procesar tweets en lotes de 10 para evitar sobrecarga
+    const batchSize = 10;
+    for (let i = 0; i < uncategorizedTweets.length; i += batchSize) {
+      const batch = uncategorizedTweets.slice(i, i + batchSize);
+      
+      for (const tweet of batch) {
+        try {
+          processed++;
+          
+          // Categorizar el tweet usando IA
+          const result = await categorizeTweet(tweet.content, userId);
+          
+          if (result.categories && result.categories.length > 0) {
+            // Obtener la categoría principal
+            const primaryCategory = result.categories.find(cat => cat.isPrimary) || result.categories[0];
+            
+            // Actualizar la categoría del tweet
+            await prisma.tweet.update({
+              where: { id: tweet.id },
+              data: { category: primaryCategory.category }
+            });
+
+            // Guardar todas las categorías del tweet
+            await saveTweetCategories(tweet.id, result.categories, userId);
+            
+            categorized++;
+            
+            logger.info(`Tweet ${tweet.id} categorizado: ${tweet.category} -> ${primaryCategory.category}`);
+          }
+        } catch (error) {
+          logger.error(`Error categorizando tweet ${tweet.id}:`, error);
+          // Continuar con el siguiente tweet en caso de error
+        }
+      }
+      
+      // Pequeña pausa entre lotes para no sobrecargar el sistema
+      if (i + batchSize < uncategorizedTweets.length) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    }
+
+    // Actualizar conteos de categorías
+    await updateCategoryTweetCounts(userId);
+
+    logger.info(`Categorización de tweets sin categoría completada para usuario ${userId}:`, {
+      found,
+      categorized,
+      processed
+    });
+
+    return { found, categorized, processed };
+  });
 }
 
 export default {
@@ -1014,6 +1141,7 @@ export default {
   createAutoCategories,
   recategorizeSingleTweet,
   recategorizeAllTweets,
+  categorizeUncategorizedTweets,
   saveTweetCategories,
   getTweetCategories,
   updateCategoryTweetCounts
